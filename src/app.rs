@@ -607,7 +607,7 @@ fn draw_block(ui: &mut egui::Ui, b: &mut Block, idx: usize, count: usize, site: 
             height_row(ui, b, 400);
         }
         Kind::Map => {
-            ui.label(RichText::new("Lines: center: lat, lon | zoom: n | marker: lat, lon | label | circle: lat, lon | radius_m | line: lat,lon; lat,lon | label").small().weak());
+            ui.label(RichText::new("Lines: center: lat, lon | zoom: n | marker: lat, lon | label | circle: lat, lon, radius_m | label | line: lat,lon; lat,lon | label").small().weak());
             multiline(ui, &mut b.text, b.id, 5, true);
             height_row(ui, b, 360);
         }

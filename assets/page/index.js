@@ -1083,6 +1083,11 @@ async function runGodbolt(key, code, ui) {
   const nice = { c: 'C', 'c++': 'C++', java: 'Java' }[lang];
   ui.out(`Compiling and running ${nice} on godbolt.org ...`, 'dim');
   const id = await godboltCompiler(lang);
+  // Compiler Explorer does not name the file after the class, so a public top-level
+  // class (public class Main) is rejected. Drop the modifier; line numbers are unchanged.
+  if (lang === 'java') {
+    code = code.replace(/^([ \t]*)public([ \t]+(?:(?:final|abstract|strictfp)[ \t]+)*(?:class|interface|enum|record)\b)/gm, '$1$2');
+  }
   const args = lang === 'c' ? '-O1 -lm' : lang === 'c++' ? '-std=c++20 -O1' : '';
   const r = await fetch(`${CONFIG.godbolt}/compiler/${encodeURIComponent(id)}/compile`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -1215,13 +1220,18 @@ function initMap(el) {
     }
     L.tileLayer(tiles, { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
     for (const [k, v] of kv) {
-      const [spec, label] = v.split('|').map((x) => x.trim());
+      const parts = v.split('|').map((x) => x.trim());
+      const spec = parts[0];
+      let label = parts[1];
       if (k === 'marker') {
         const p = ll(spec); if (p.some(isNaN)) continue;
         const m = L.marker(p).addTo(map); if (label) m.bindPopup(label); pts.push(p);
       } else if (k === 'circle') {
-        const a = ll(spec); if (a.slice(0, 3).some(isNaN)) continue;
-        const c = L.circle([a[0], a[1]], { radius: a[2] }).addTo(map); if (label) c.bindPopup(label); pts.push([a[0], a[1]]);
+        const a = ll(spec); if (a.slice(0, 2).some(isNaN)) continue;
+        let radius = a[2];
+        if (!isFinite(radius)) { radius = parseFloat(parts[1]); label = parts[2]; }
+        if (!isFinite(radius) || radius <= 0) radius = 500;
+        const c = L.circle([a[0], a[1]], { radius }).addTo(map); if (label) c.bindPopup(label); pts.push([a[0], a[1]]);
       } else if (k === 'line') {
         const path = spec.split(';').map(ll).filter((p) => p.length === 2 && !p.some(isNaN));
         if (path.length > 1) { const l = L.polyline(path, { color: '#3366cc', weight: 4 }).addTo(map); if (label) l.bindPopup(label); pts.push(...path); }
