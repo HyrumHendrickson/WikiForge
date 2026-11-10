@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wiki</title>
+  <link rel="stylesheet" href="index.css">
+</head>
+<body>
+  <header class="wk-header">
+    <a class="wk-logo" href="index.html"><span class="wk-globe">W</span><span id="site-title">Wiki</span></a>
+    <div class="wk-search">
+      <input id="search" type="search" placeholder="Search articles" autocomplete="off">
+      <div id="search-results" class="search-results"></div>
+    </div>
+  </header>
+
+  <div class="wk-layout">
+    <nav class="wk-sidebar">
+      <h3>Navigation</h3>
+      <ul><li><a href="index.html">Main page</a></li></ul>
+      <h3>Articles</h3>
+      <ul id="sidebar-list"></ul>
+    </nav>
+
+    <main class="wk-main">
+      <h1 id="home-title">Welcome</h1>
+      <p class="home-intro">This is a collection of interactive articles. Pick one below or use the search box.</p>
+      <div class="home-panel">
+        <h2>All articles</h2>
+        <ul id="article-list" class="article-list"></ul>
+        <p id="empty" class="muted" hidden>No articles yet.</p>
+      </div>
+    </main>
+  </div>
+
+  <script src="index.js"></script>
+</body>
+</html>

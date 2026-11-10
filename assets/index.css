@@ -1,0 +1,127 @@
+/* ==========================================================================
+   Base styles shared by the home page and the article viewer.
+   Edit freely: WikiForge only rewrites this file if you ask it to.
+   ========================================================================== */
+
+:root {
+  --bg: #f8f9fa;
+  --paper: #ffffff;
+  --text: #202122;
+  --muted: #54595d;
+  --border: #a2a9b1;
+  --border-soft: #c8ccd1;
+  --link: #0645ad;          /* internal links */
+  --link-visited: #0b0080;
+  --link-ext: #1a7f37;      /* external links */
+  --accent: #36c;
+  --panel: #eaecf0;
+  --serif: "Linux Libertine", "Georgia", "Times", serif;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+* { box-sizing: border-box; }
+
+html { font-size: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+a { text-decoration: none; }
+a:hover { text-decoration: underline; }
+a.wl-int, .wk-sidebar a, .article-list a { color: var(--link); }
+a.wl-int:visited { color: var(--link-visited); }
+a.wl-ext { color: var(--link-ext); }
+a.wl-ext::after { content: "\2197"; font-size: 0.72em; margin-left: 2px; vertical-align: super; }
+
+/* ---------- header ---------- */
+.wk-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  height: 3.4rem;
+  padding: 0 1rem;
+  background: var(--paper);
+  border-bottom: 1px solid var(--border-soft);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+.wk-logo {
+  display: flex; align-items: center; gap: 0.6rem;
+  color: var(--text); font-family: var(--serif); font-size: 1.35rem;
+  white-space: nowrap;
+}
+.wk-logo:hover { text-decoration: none; }
+.wk-globe {
+  display: inline-grid; place-items: center;
+  width: 2rem; height: 2rem; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff, #cfd8e6 60%, #9fb0c8);
+  border: 1px solid #8a97ab;
+  font-family: var(--serif); font-weight: bold; color: #333;
+}
+.wk-search { position: relative; margin-left: auto; width: min(26rem, 55vw); }
+.wk-search input {
+  width: 100%; padding: 0.4rem 0.75rem;
+  border: 1px solid var(--border); border-radius: 2px;
+  font: inherit; background: #fff;
+}
+.wk-search input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+.search-results {
+  position: absolute; top: 100%; left: 0; right: 0;
+  background: #fff; border: 1px solid var(--border); border-top: 0;
+  box-shadow: 0 4px 10px rgba(0,0,0,.12);
+  max-height: 18rem; overflow: auto; display: none;
+}
+.search-results a { display: block; padding: 0.4rem 0.75rem; color: var(--link); }
+.search-results a:hover, .search-results a.active { background: #eaf3ff; text-decoration: none; }
+
+/* ---------- layout ---------- */
+.wk-layout { display: flex; align-items: flex-start; max-width: 1400px; margin: 0 auto; }
+.wk-sidebar { width: 13rem; flex: none; padding: 1.2rem 1rem; font-size: 0.85rem; position: sticky; top: 3.4rem; max-height: calc(100vh - 3.4rem); overflow: auto; }
+.wk-sidebar h3 { margin: 1rem 0 0.3rem; font-size: 0.78rem; color: var(--muted); font-weight: normal; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--border-soft); }
+.wk-sidebar ul { list-style: none; margin: 0; padding: 0; }
+.wk-sidebar li { padding: 0.12rem 0; }
+.wk-sidebar li.current a { color: var(--text); font-weight: bold; }
+
+.wk-main {
+  flex: 1; min-width: 0;
+  background: var(--paper);
+  border: 1px solid #a7d7f9; border-right: 0;
+  padding: 1.25rem 1.75rem 2.5rem;
+  min-height: calc(100vh - 3.4rem);
+}
+
+h1, h2, h3, h4, h5, h6 { font-weight: normal; line-height: 1.3; }
+.wk-main h1 {
+  font-family: var(--serif); font-size: 1.9rem;
+  margin: 0 0 0.5rem; padding-bottom: 0.2rem;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ---------- home page ---------- */
+.home-intro { font-size: 1rem; margin-bottom: 1rem; }
+.article-list { columns: 16rem; column-gap: 2rem; list-style: none; padding: 0; margin: 0.5rem 0 1rem; }
+.article-list li { padding: 0.15rem 0; break-inside: avoid; }
+.home-panel {
+  border: 1px solid var(--border-soft); background: var(--bg);
+  padding: 0.6rem 1rem 0.8rem; margin: 1rem 0;
+}
+.home-panel h2 {
+  margin: 0 -1rem 0.6rem; padding: 0.25rem 1rem;
+  background: #cedff2; font-family: var(--sans); font-size: 1rem; font-weight: bold;
+  border-bottom: 1px solid #a3b0bf;
+}
+.muted { color: var(--muted); }
+
+@media (max-width: 800px) {
+  .wk-layout { display: block; }
+  .wk-sidebar { width: auto; position: static; max-height: none; }
+  .wk-main { border-left: 0; padding: 1rem; }
+}

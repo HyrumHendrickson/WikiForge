@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Article</title>
+  <link rel="stylesheet" href="index.css">
+</head>
+<body>
+  <header class="wk-header">
+    <a class="wk-logo" href="../index.html"><span class="wk-globe">W</span><span id="site-title">Wiki</span></a>
+    <div class="wk-search">
+      <input id="search" type="search" placeholder="Search articles" autocomplete="off">
+      <div id="search-results" class="search-results"></div>
+    </div>
+  </header>
+
+  <div class="wk-layout">
+    <nav class="wk-sidebar">
+      <h3>Navigation</h3>
+      <ul><li><a href="../index.html">Main page</a></li></ul>
+      <h3>Articles</h3>
+      <ul id="sidebar-list"></ul>
+    </nav>
+
+    <main class="wk-main">
+      <article id="article">
+        <h1 id="firstHeading"></h1>
+        <div id="content" class="mw-body-content"><p class="muted">Loading...</p></div>
+      </article>
+    </main>
+  </div>
+
+  <script src="index.js"></script>
+</body>
+</html>

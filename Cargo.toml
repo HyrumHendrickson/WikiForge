@@ -1,0 +1,11 @@
+[package]
+name = "wikiforge"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "clipboard", "links", "glow", "wayland", "x11"] }
+egui_extras = { version = "0.37", features = ["file", "image"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
+rfd = "0.18"
+webbrowser = "1"
