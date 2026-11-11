@@ -62,7 +62,13 @@ fn content_type(path: &Path) -> &'static str {
         Some("mov") => "video/quicktime",
         Some("glb") => "model/gltf-binary",
         Some("gltf") => "model/gltf+json",
-        Some("csv") => "text/csv",
+        Some("csv") => "text/csv; charset=utf-8",
+        Some("mp3") => "audio/mpeg",
+        Some("wav") => "audio/wav",
+        Some("ogg") | Some("oga") | Some("opus") => "audio/ogg",
+        Some("m4a") => "audio/mp4",
+        Some("aac") => "audio/aac",
+        Some("flac") => "audio/flac",
         _ => "application/octet-stream",
     }
 }

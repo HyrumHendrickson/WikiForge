@@ -18,6 +18,9 @@ pub enum Kind {
     Desmos,
     Map,
     Model,
+    Timeline,
+    Audio,
+    CsvSearch,
     Infobox,
     Callout,
     Footnote,
@@ -37,6 +40,9 @@ impl Kind {
             Kind::Desmos => "Desmos graph",
             Kind::Map => "Map",
             Kind::Model => "3D model",
+            Kind::Timeline => "Timeline",
+            Kind::Audio => "Audio player",
+            Kind::CsvSearch => "CSV search",
             Kind::Infobox => "Infobox",
             Kind::Callout => "Callout",
             Kind::Footnote => "Footnote",
@@ -101,6 +107,13 @@ impl Block {
                 b.attrs.insert("src".into(), "https://modelviewer.dev/shared-assets/models/Astronaut.glb".into());
                 b.attrs.insert("alt".into(), "A 3D model".into());
                 b.attrs.insert("height".into(), "420".into());
+            }
+            Kind::Timeline => {
+                b.text = "-509 | Republic founded | The Roman monarchy gives way to the Republic.\n-264 | First Punic War begins | Rome and Carthage contest Sicily.\n-146 | Carthage destroyed | The Third Punic War ends.\n-44 | Julius Caesar assassinated | The Ides of March.\n-27 | Augustus becomes emperor | The Principate begins.".into()
+            }
+            Kind::Audio => {}
+            Kind::CsvSearch => {
+                b.attrs.insert("height".into(), "360".into());
             }
             Kind::Infobox => b.text = "title: Subject\nType: Example\nFounded: 2024".into(),
             Kind::Callout => {
@@ -494,6 +507,8 @@ fn fence_to_block(lang: &str, attrs: BTreeMap<String, String>, body: String) -> 
         "map" => (Kind::Map, ""),
         "desmos" => (Kind::Desmos, ""),
         "model" => (Kind::Model, ""),
+        "timeline" => (Kind::Timeline, ""),
+        "csvsearch" => (Kind::CsvSearch, ""),
         "math" | "latex" => (Kind::Math, ""),
         "py" => (Kind::Code, "python"),
         "js" => (Kind::Code, "javascript"),
@@ -531,6 +546,11 @@ fn directive_to_block(name: &str, attrs: BTreeMap<String, String>, body: String)
         }
         "figure" => {
             let mut b = Block::new(Kind::Figure);
+            b.attrs = attrs;
+            b
+        }
+        "audio" => {
+            let mut b = Block::new(Kind::Audio);
             b.attrs = attrs;
             b
         }
@@ -602,7 +622,10 @@ pub fn to_markdown(blocks: &[Block]) -> String {
                 format!("```{info}\n{}\n```", b.text.trim_end_matches('\n'))
             }
             Kind::Desmos => fence("desmos", &b.attrs, &["height"], &b.text),
-            Kind::Map => fence("map", &b.attrs, &["height"], &b.text),
+            Kind::Map => fence("map", &b.attrs, &["height", "interactive"], &b.text),
+            Kind::Timeline => fence("timeline", &b.attrs, &["interactive"], &b.text),
+            Kind::CsvSearch => fence("csvsearch", &b.attrs, &["src", "height"], ""),
+            Kind::Audio => format!("::: audio {}\n:::", format_attrs(&b.attrs, &["src", "title"])),
             Kind::Model => fence("model", &b.attrs, &["src", "alt", "height", "poster", "rotate"], ""),
             Kind::Infobox => format!("::: infobox\n{}\n:::", b.text.trim()),
             Kind::Callout => {
@@ -678,10 +701,47 @@ mod tests {
     #[test]
     fn kinds_present() {
         let blocks = parse_markdown(include_str!("../assets/showcase.md"));
-        for k in [Kind::Heading, Kind::Text, Kind::Figure, Kind::Table, Kind::Sheet, Kind::Math, Kind::Code, Kind::Desmos, Kind::Map, Kind::Model, Kind::Infobox, Kind::Callout, Kind::Footnote] {
+        for k in [
+            Kind::Heading,
+            Kind::Text,
+            Kind::Figure,
+            Kind::Table,
+            Kind::Sheet,
+            Kind::Math,
+            Kind::Code,
+            Kind::Desmos,
+            Kind::Map,
+            Kind::Model,
+            Kind::Timeline,
+            Kind::Audio,
+            Kind::CsvSearch,
+            Kind::Infobox,
+            Kind::Callout,
+            Kind::Footnote,
+        ] {
             assert!(blocks.iter().any(|b| b.kind == k), "missing {:?}", k);
         }
         assert_eq!(blocks.iter().filter(|b| b.kind == Kind::Code && b.attr("canvas") == "1").count(), 6);
+    }
+
+    #[test]
+    fn new_embeds_round_trip() {
+        let md = "```timeline interactive=false\n1900 | A | first\n1950 | B | second\n```\n\n```map height=300 interactive=false\ncenter: 1, 2\n```\n\n::: audio src=media/a.mp3 title=\"A song\"\n:::\n\n```csvsearch src=media/d.csv height=300\n\n```\n";
+        let blocks = parse_markdown(md);
+        let kinds: Vec<Kind> = blocks.iter().map(|b| b.kind).collect();
+        assert_eq!(kinds, vec![Kind::Timeline, Kind::Map, Kind::Audio, Kind::CsvSearch]);
+        assert_eq!(blocks[0].attr("interactive"), "false");
+        assert_eq!(blocks[0].text, "1900 | A | first\n1950 | B | second");
+        assert_eq!(blocks[1].attr("interactive"), "false");
+        assert_eq!(blocks[2].attr("title"), "A song");
+        assert_eq!(blocks[3].attr("src"), "media/d.csv");
+        let again = to_markdown(&blocks);
+        assert_eq!(again, md);
+        // interactive is the default and is written only when switched off
+        let mut b = Block::new(Kind::Timeline);
+        assert!(!to_markdown(&[b.clone()]).contains("interactive"));
+        b.set_attr("interactive", "false");
+        assert!(to_markdown(&[b]).starts_with("```timeline interactive=false\n"));
     }
 
     #[test]

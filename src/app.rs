@@ -33,6 +33,9 @@ const ADD_KINDS: &[Kind] = &[
     Kind::Desmos,
     Kind::Map,
     Kind::Model,
+    Kind::Timeline,
+    Kind::Audio,
+    Kind::CsvSearch,
     Kind::Infobox,
     Kind::Callout,
     Kind::Footnote,
@@ -61,6 +64,12 @@ pub struct App {
     confirm_delete: bool,
     autosave: bool,
     last_change: Instant,
+    /// Filter for the page list in the sidebar (the site may have thousands of articles).
+    page_filter: String,
+    /// "Featured articles" window.
+    show_featured: bool,
+    featured_filter: String,
+    featured_only: bool,
 }
 
 fn text_id(block_id: u64) -> egui::Id {
@@ -83,6 +92,10 @@ impl App {
             confirm_delete: false,
             autosave: true,
             last_change: Instant::now(),
+            page_filter: String::new(),
+            show_featured: false,
+            featured_filter: String::new(),
+            featured_only: false,
         }
     }
 
@@ -96,9 +109,9 @@ impl App {
         let (Some(site), Some(slug)) = (self.site.clone(), self.current.clone()) else { return };
         let md = to_markdown(&self.blocks);
         match site.write_page(&slug, &md) {
-            Ok(()) => {
+            Ok(infos) => {
                 self.saved_md = md;
-                self.pages = site.page_infos();
+                self.pages = infos;
                 self.status = format!("Saved pages/{slug}.md");
             }
             Err(e) => self.status = format!("Could not save: {e}"),
@@ -178,11 +191,13 @@ impl App {
             self.status = format!("A page named {slug} already exists; opened it.");
         } else {
             let md = format!("# {name}\n\nThis article is about **{name}**.\n");
-            if let Err(e) = site.write_page(&slug, &md) {
-                self.status = format!("Could not create page: {e}");
-                return;
+            match site.write_page(&slug, &md) {
+                Ok(infos) => self.pages = infos,
+                Err(e) => {
+                    self.status = format!("Could not create page: {e}");
+                    return;
+                }
             }
-            self.pages = site.page_infos();
             self.status = format!("Created pages/{slug}.md");
         }
         self.new_page_name.clear();
@@ -192,8 +207,8 @@ impl App {
     fn delete_current(&mut self) {
         let (Some(site), Some(slug)) = (self.site.clone(), self.current.clone()) else { return };
         match site.delete_page(&slug) {
-            Ok(()) => {
-                self.pages = site.page_infos();
+            Ok(infos) => {
+                self.pages = infos;
                 self.current = None;
                 self.blocks.clear();
                 self.saved_md.clear();
@@ -219,6 +234,36 @@ impl App {
                 self.select_page(&slug);
             }
             Err(e) => self.status = format!("Could not write the showcase page: {e}"),
+        }
+    }
+
+    fn add_examples(&mut self) {
+        let Some(site) = self.site.clone() else { return };
+        if self.is_dirty() {
+            self.save();
+        }
+        match site.write_examples() {
+            Ok(0) => self.status = "Example 1 to Example 10 already exist; nothing was added.".into(),
+            Ok(n) => {
+                self.pages = site.page_infos();
+                self.status = format!("Added {n} linked example articles (Example 1 ... Example 10). Open the home page to see them on the site map.");
+            }
+            Err(e) => self.status = format!("Could not add the example articles: {e}"),
+        }
+    }
+
+    fn set_featured(&mut self, slugs: &[String], on: bool) {
+        let Some(site) = self.site.clone() else { return };
+        if slugs.is_empty() {
+            return;
+        }
+        match site.set_featured(slugs, on) {
+            Ok(infos) => {
+                self.pages = infos;
+                let n = self.pages.iter().filter(|p| p.featured).count();
+                self.status = format!("{n} featured article{} (shown in the sidebar).", if n == 1 { "" } else { "s" });
+            }
+            Err(e) => self.status = format!("Could not update the featured list: {e}"),
         }
     }
 
@@ -250,7 +295,8 @@ impl App {
         exts.extend(IMAGE_EXTS);
         exts.extend(VIDEO_EXTS);
         exts.extend(MODEL_EXTS);
-        let Some(path) = rfd::FileDialog::new().add_filter("Images, videos and 3D models", &exts).pick_file() else { return };
+        exts.extend(AUDIO_EXTS);
+        let Some(path) = rfd::FileDialog::new().add_filter("Images, videos, audio and 3D models", &exts).pick_file() else { return };
         match site.import_media(&path) {
             Ok(rel) => {
                 let ext = ext_of(&rel);
@@ -258,6 +304,11 @@ impl App {
                 if MODEL_EXTS.contains(&ext.as_str()) {
                     b = Block::new(Kind::Model);
                     b.set_attr("src", rel.clone());
+                } else if AUDIO_EXTS.contains(&ext.as_str()) {
+                    b = Block::new(Kind::Audio);
+                    b.set_attr("src", rel.clone());
+                    let stem = std::path::Path::new(&rel).file_stem().map(|s| s.to_string_lossy().replace(['-', '_'], " ")).unwrap_or_default();
+                    b.set_attr("title", stem);
                 } else {
                     b = Block::new(Kind::Figure);
                     b.set_attr("src", rel.clone());
@@ -299,6 +350,10 @@ impl App {
                     ui.close();
                     self.generate_showcase();
                 }
+                if ui.add_enabled(has_site, egui::Button::new("Add 10 example articles")).on_hover_text("Example 1 ... Example 10, linked to each other, to try out the site map").clicked() {
+                    ui.close();
+                    self.add_examples();
+                }
                 if ui.add_enabled(self.current.is_some(), egui::Button::new("Preview in browser")).clicked() {
                     ui.close();
                     self.preview();
@@ -310,6 +365,10 @@ impl App {
                 }
             });
             ui.menu_button("Site", |ui| {
+                if ui.add_enabled(self.site.is_some(), egui::Button::new("Featured articles...")).on_hover_text("Choose which articles are listed in the sidebar").clicked() {
+                    ui.close();
+                    self.show_featured = true;
+                }
                 if ui.add_enabled(self.site.is_some(), egui::Button::new("Restore default templates")).on_hover_text("Overwrites index.html/css/js and page/index.html/css/js").clicked() {
                     ui.close();
                     if let Some(site) = &self.site {
@@ -343,11 +402,22 @@ impl App {
         ui.label(RichText::new(site.root.display().to_string()).small().weak());
         ui.separator();
         ui.heading("Pages");
+        let featured_count = self.pages.iter().filter(|p| p.featured).count();
+        ui.label(RichText::new(format!("{} articles, {} featured (*)", self.pages.len(), featured_count)).small().weak());
+        ui.add(egui::TextEdit::singleline(&mut self.page_filter).hint_text("Filter pages").desired_width(f32::INFINITY));
+        let q = self.page_filter.trim().to_lowercase();
+        let visible: Vec<usize> = (0..self.pages.len())
+            .filter(|&i| q.is_empty() || self.pages[i].title.to_lowercase().contains(&q) || self.pages[i].slug.contains(&q))
+            .collect();
         let mut to_select: Option<String> = None;
-        egui::ScrollArea::vertical().id_salt("page-list").max_height(ui.available_height() - 90.0).show(ui, |ui| {
-            for p in &self.pages {
+        let row_h = ui.text_style_height(&egui::TextStyle::Body) + ui.spacing().item_spacing.y;
+        // show_rows only lays out the visible rows, so thousands of articles stay fast
+        egui::ScrollArea::vertical().id_salt("page-list").max_height((ui.available_height() - 130.0).max(80.0)).show_rows(ui, row_h, visible.len(), |ui, range| {
+            for row in range {
+                let p = &self.pages[visible[row]];
                 let selected = self.current.as_deref() == Some(p.slug.as_str());
-                if ui.selectable_label(selected, &p.title).on_hover_text(format!("pages/{}.md", p.slug)).clicked() {
+                let text = if p.featured { format!("* {}", p.title) } else { p.title.clone() };
+                if ui.selectable_label(selected, text).on_hover_text(format!("pages/{}.md", p.slug)).clicked() {
                     to_select = Some(p.slug.clone());
                 }
             }
@@ -361,6 +431,9 @@ impl App {
         let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
         if ui.button("Create page").clicked() || enter {
             self.create_page();
+        }
+        if ui.button("Add 10 example articles").on_hover_text("Example 1 ... Example 10, linked to each other, to try out the site map").clicked() {
+            self.add_examples();
         }
     }
 
@@ -398,6 +471,10 @@ impl App {
             if dirty {
                 ui.label(RichText::new("unsaved changes").color(Color32::from_rgb(190, 110, 0)));
             }
+            let mut featured = self.pages.iter().find(|p| p.slug == slug).map(|p| p.featured).unwrap_or(false);
+            if ui.checkbox(&mut featured, "Featured").on_hover_text("Featured articles are listed in the sidebar. Others are found through search and the site map.").changed() {
+                self.set_featured(&[slug.clone()], featured);
+            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button("Preview in browser").clicked() {
                     self.preview();
@@ -416,7 +493,7 @@ impl App {
                     }
                 }
             });
-            if ui.button("Add image / video / 3D model...").clicked() {
+            if ui.button("Add image / video / audio / 3D model...").clicked() {
                 self.add_media();
             }
             ui.label(RichText::new(format!("{} blocks", self.blocks.len())).weak());
@@ -482,7 +559,62 @@ impl App {
         }
     }
 
+    fn featured_window(&mut self, ctx: &egui::Context) {
+        if !self.show_featured {
+            return;
+        }
+        let mut open = true;
+        let mut changes: Vec<(String, bool)> = Vec::new();
+        let mut bulk: Option<(Vec<String>, bool)> = None;
+        egui::Window::new("Featured articles").open(&mut open).default_size([440.0, 520.0]).show(ctx, |ui| {
+            ui.label("Featured articles are listed in the sidebar of the home page and of every article. Every article stays reachable through search, the home page list and the site map.");
+            ui.horizontal(|ui| {
+                ui.add(egui::TextEdit::singleline(&mut self.featured_filter).hint_text("Filter by title"));
+                ui.checkbox(&mut self.featured_only, "Featured only");
+            });
+            let q = self.featured_filter.trim().to_lowercase();
+            let visible: Vec<usize> = (0..self.pages.len())
+                .filter(|&i| {
+                    let p = &self.pages[i];
+                    (!self.featured_only || p.featured) && (q.is_empty() || p.title.to_lowercase().contains(&q) || p.slug.contains(&q))
+                })
+                .collect();
+            ui.horizontal(|ui| {
+                let total = self.pages.iter().filter(|p| p.featured).count();
+                ui.label(RichText::new(format!("{} shown, {} featured of {}", visible.len(), total, self.pages.len())).small().weak());
+                if ui.small_button("Feature all shown").clicked() {
+                    bulk = Some((visible.iter().map(|&i| self.pages[i].slug.clone()).collect(), true));
+                }
+                if ui.small_button("Unfeature all shown").clicked() {
+                    bulk = Some((visible.iter().map(|&i| self.pages[i].slug.clone()).collect(), false));
+                }
+            });
+            ui.separator();
+            let row_h = ui.spacing().interact_size.y + ui.spacing().item_spacing.y;
+            egui::ScrollArea::vertical().id_salt("featured-list").auto_shrink([false, false]).show_rows(ui, row_h, visible.len(), |ui, range| {
+                for row in range {
+                    let p = &self.pages[visible[row]];
+                    let mut on = p.featured;
+                    if ui.checkbox(&mut on, &p.title).on_hover_text(format!("pages/{}.md", p.slug)).changed() {
+                        changes.push((p.slug.clone(), on));
+                    }
+                }
+            });
+        });
+        if !open {
+            self.show_featured = false;
+        }
+        if let Some((slugs, on)) = bulk {
+            self.set_featured(&slugs, on);
+        }
+        let on: Vec<String> = changes.iter().filter(|c| c.1).map(|c| c.0.clone()).collect();
+        let off: Vec<String> = changes.iter().filter(|c| !c.1).map(|c| c.0.clone()).collect();
+        self.set_featured(&on, true);
+        self.set_featured(&off, false);
+    }
+
     fn dialogs(&mut self, ctx: &egui::Context) {
+        self.featured_window(ctx);
         if self.confirm_delete {
             let mut open = true;
             let mut close = false;
@@ -609,9 +741,17 @@ fn draw_block(ui: &mut egui::Ui, b: &mut Block, idx: usize, count: usize, site: 
         Kind::Map => {
             ui.label(RichText::new("Lines: center: lat, lon | zoom: n | marker: lat, lon | label | circle: lat, lon, radius_m | label | line: lat,lon; lat,lon | label").small().weak());
             multiline(ui, &mut b.text, b.id, 5, true);
+            interactive_row(ui, b, "Interactive (drag, zoom, popups). Untick for a fixed picture with the labels shown.");
             height_row(ui, b, 360);
         }
         Kind::Model => model_ui(ui, b, site, status),
+        Kind::Timeline => {
+            ui.label(RichText::new("One event per line: date | title | description. Dates can be years (negative or '44 BC' for before the common era) or YYYY-MM-DD; events are spaced by date when every date is numeric.").small().weak());
+            multiline(ui, &mut b.text, b.id, 6, true);
+            interactive_row(ui, b, "Interactive (click events, previous / next, drag to scroll). Untick for a plain list.");
+        }
+        Kind::Audio => audio_ui(ui, b, site, status),
+        Kind::CsvSearch => csv_ui(ui, b, site, status),
         Kind::Infobox => {
             ui.label(RichText::new("Lines of 'Name: value'. Special keys: title, image. Floats to the right of the article.").small().weak());
             multiline(ui, &mut b.text, b.id, 5, false);
@@ -651,7 +791,8 @@ fn draw_block(ui: &mut egui::Ui, b: &mut Block, idx: usize, count: usize, site: 
 fn kind_color(k: Kind) -> Color32 {
     match k {
         Kind::Heading | Kind::Text => Color32::from_rgb(70, 110, 190),
-        Kind::Figure | Kind::Model => Color32::from_rgb(40, 140, 100),
+        Kind::Figure | Kind::Model | Kind::Audio => Color32::from_rgb(40, 140, 100),
+        Kind::Timeline | Kind::CsvSearch => Color32::from_rgb(190, 120, 30),
         Kind::Code | Kind::Raw => Color32::from_rgb(160, 80, 160),
         Kind::Table | Kind::Sheet => Color32::from_rgb(190, 120, 30),
         _ => Color32::from_rgb(110, 110, 120),
@@ -920,6 +1061,109 @@ fn model_ui(ui: &mut egui::Ui, b: &mut Block, site: &Site, status: &mut String) 
     height_row(ui, b, 420);
 }
 
+/// Checkbox for the `interactive` attribute. On is the default and is not written to the file;
+/// off is stored as `interactive=false`.
+fn interactive_row(ui: &mut egui::Ui, b: &mut Block, label: &str) {
+    let mut on = !matches!(b.attr("interactive"), "false" | "0");
+    if ui.checkbox(&mut on, label).changed() {
+        b.set_attr("interactive", if on { "" } else { "false" });
+    }
+}
+
+fn audio_ui(ui: &mut egui::Ui, b: &mut Block, site: &Site, status: &mut String) {
+    ui.label(RichText::new("A small audio player. Choose a sound file (mp3, wav, ogg, m4a, flac ...) or paste an address.").small().weak());
+    media_row(ui, "Audio", b, "src", site, AUDIO_EXTS, status);
+    ui.horizontal(|ui| {
+        ui.label("Title");
+        let mut v = b.attr("title").to_string();
+        if ui.add(egui::TextEdit::singleline(&mut v).desired_width(f32::INFINITY).hint_text("Optional, shown above the player")).changed() {
+            b.set_attr("title", v);
+        }
+    });
+    let src = b.attr("src");
+    if src.is_empty() {
+        ui.label(RichText::new("No file chosen yet.").weak());
+    } else if !src.starts_with("http") && !site.media_path(src).is_file() {
+        ui.colored_label(Color32::from_rgb(190, 60, 60), format!("{src} was not found in the site folder."));
+    } else {
+        ui.label(RichText::new("Plays in the browser preview.").small().weak());
+    }
+}
+
+/// First rows of a CSV file, cached in egui's temporary memory so the file is read once rather
+/// than on every repaint (the file may have thousands of rows).
+#[derive(Clone)]
+struct CsvPreview {
+    src: String,
+    rows: Vec<Vec<String>>,
+    total: usize,
+    error: Option<String>,
+}
+
+fn load_csv_preview(site: &Site, src: &str) -> CsvPreview {
+    let mut p = CsvPreview { src: src.to_string(), rows: Vec::new(), total: 0, error: None };
+    match std::fs::read_to_string(site.media_path(src)) {
+        Ok(text) => {
+            let all = parse_csv(&text);
+            p.total = all.len().saturating_sub(1);
+            p.rows = all.into_iter().take(6).collect();
+        }
+        Err(e) => p.error = Some(format!("Could not read {src}: {e}")),
+    }
+    p
+}
+
+fn csv_ui(ui: &mut egui::Ui, b: &mut Block, site: &Site, status: &mut String) {
+    ui.label(RichText::new("Upload a CSV file (the first row is the header). Readers get a search box for every column, plus one for all columns, and can sort by clicking a header.").small().weak());
+    ui.label(RichText::new("In a column box: text matches anywhere in the cell, !text excludes it, >100  <=5  =7 compare numbers, 10..20 is a range of numbers.").small().weak());
+    media_row(ui, "CSV file", b, "src", site, CSV_EXTS, status);
+    let src = b.attr("src").to_string();
+    let pid = egui::Id::unique(("csv-preview", b.id));
+    if src.is_empty() {
+        ui.label(RichText::new("No file chosen yet.").weak());
+    } else if src.starts_with("http") {
+        ui.label(RichText::new("Remote file; the server must allow cross-origin requests. Shown in the browser preview.").small().weak());
+    } else {
+        let cached = ui.ctx().data(|d| d.get_temp::<CsvPreview>(pid)).filter(|p| p.src == src);
+        let preview = match cached {
+            Some(p) => p,
+            None => {
+                let p = load_csv_preview(site, &src);
+                ui.ctx().data_mut(|d| d.insert_temp(pid, p.clone()));
+                p
+            }
+        };
+        if let Some(e) = &preview.error {
+            ui.colored_label(Color32::from_rgb(190, 60, 60), e);
+        } else {
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(format!("{} data rows, {} columns. First rows:", preview.total, preview.rows.first().map(|r| r.len()).unwrap_or(0))).small().weak());
+                if ui.small_button("Reload").clicked() {
+                    ui.ctx().data_mut(|d| d.remove::<CsvPreview>(pid));
+                }
+            });
+            egui::ScrollArea::horizontal().id_salt(("csv-preview-scroll", b.id)).show(ui, |ui| {
+                egui::Grid::new(("csv-preview-grid", b.id)).striped(true).show(ui, |ui| {
+                    for (r, row) in preview.rows.iter().enumerate() {
+                        for cell in row {
+                            let t = RichText::new(cell).small();
+                            ui.label(if r == 0 { t.strong() } else { t });
+                        }
+                        ui.end_row();
+                    }
+                });
+            });
+        }
+    }
+    ui.horizontal(|ui| {
+        ui.label("Results height");
+        let mut h: u32 = b.attr("height").parse().unwrap_or(360);
+        if ui.add(egui::DragValue::new(&mut h).range(120..=1200).suffix(" px")).changed() {
+            b.set_attr("height", h.to_string());
+        }
+    });
+}
+
 fn sheet_ui(ui: &mut egui::Ui, b: &mut Block) {
     ui.label(RichText::new("Interactive spreadsheet. Cells starting with = are formulas; separate function arguments with ; (for example =IF(A1>2;\"big\";\"small\")).").small().weak());
     grid_editor(ui, b.id, &mut b.grid, true);
@@ -1090,6 +1334,10 @@ impl App {
             confirm_delete: false,
             autosave: false,
             last_change: Instant::now(),
+            page_filter: String::new(),
+            show_featured: false,
+            featured_filter: String::new(),
+            featured_only: false,
         }
     }
 }
@@ -1158,6 +1406,44 @@ mod tests {
         assert!(dir.join("pages/second-page.md").is_file());
         let manifest = std::fs::read_to_string(dir.join("pages/pages.json")).unwrap();
         assert!(manifest.contains("second-page") && manifest.contains("Second page"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn examples_and_featured_articles() {
+        let dir = std::env::temp_dir().join(format!("wikiforge-ui-feat-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        Site::create(&dir, "Feat test").unwrap();
+        let ctx = egui::Context::default();
+        setup_fonts(&ctx);
+        let mut app = App::headless();
+        app.load_site(Site::open(&dir).unwrap());
+        frame(&ctx, &mut app);
+
+        app.add_examples();
+        assert_eq!(app.pages.len(), 11);
+        assert!(dir.join("pages/example-10.md").is_file());
+        assert!(app.status.contains("10"), "{}", app.status);
+        app.add_examples();
+        assert!(app.status.contains("already exist"), "{}", app.status);
+
+        // only the main page is featured to begin with
+        assert_eq!(app.pages.iter().filter(|p| p.featured).count(), 1);
+        app.set_featured(&["example-1".to_string(), "example-2".to_string()], true);
+        assert_eq!(app.pages.iter().filter(|p| p.featured).count(), 3);
+        assert!(std::fs::read_to_string(dir.join("pages/pages.json")).unwrap().contains("\"featured\": [\"example-1\", \"example-2\", \"main-page\"]"));
+
+        // the featured window and the filtered sidebar render, with and without a filter
+        app.show_featured = true;
+        frame(&ctx, &mut app);
+        app.featured_filter = "example 1".into();
+        app.featured_only = true;
+        app.page_filter = "example".into();
+        frame(&ctx, &mut app);
+        assert!(app.show_featured);
+
+        app.set_featured(&["example-1".to_string()], false);
+        assert_eq!(app.pages.iter().filter(|p| p.featured).count(), 2);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

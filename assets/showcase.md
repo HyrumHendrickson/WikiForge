@@ -4,7 +4,7 @@
 title: Showcase
 image: media/sample.svg
 Purpose: Demonstrate every embed type
-Formats: Markdown, LaTeX, code, sheets, maps
+Formats: Markdown, LaTeX, code, sheets, maps, timelines, audio, searchable CSV
 Languages: Python, C, C++, Rust, JavaScript, Java
 Source: [Example site](https://example.com)
 :::
@@ -254,9 +254,11 @@ public class Main {
 }
 ```
 
-## Interactive maps
+## Maps
 
-Drag to pan, use the buttons to zoom, and click a marker for its label.
+### Interactive map
+
+Drag to pan, use the buttons to zoom, and click a marker for its label. Click the map once to enable scroll-zoom.
 
 ```map height=380
 center: 40.7580, -73.9855
@@ -266,6 +268,61 @@ marker: 40.7484, -73.9857 | Empire State Building
 circle: 40.7527, -73.9772 | 600
 line: 40.7580,-73.9855; 40.7484,-73.9857 | A short walk
 ```
+
+### Non-interactive map
+
+The same block with `interactive=false` is a fixed picture: it cannot be panned or zoomed, there are no popups, and the labels are printed next to the shapes. In the editor this is the *Interactive* checkbox of the map block.
+
+```map height=300 interactive=false
+center: 40.7580, -73.9855
+zoom: 13
+marker: 40.7580, -73.9855 | Times Square
+marker: 40.7484, -73.9857 | Empire State Building
+line: 40.7580,-73.9855; 40.7484,-73.9857 | A short walk
+```
+
+## Timelines
+
+A timeline block holds one event per line, written as `date | title | description`. Dates may be years (negative numbers or `44 BC` for the years before the common era), full dates such as `1066-10-14`, or any text. When every date is numeric the events are sorted and spaced in proportion to their dates.
+
+### Interactive timeline
+
+Click an event, use the *Previous* and *Next* buttons or the arrow keys, and drag the timeline sideways to scroll through time.
+
+```timeline
+-509 | Republic founded | The last Roman king is expelled and the *res publica* begins.
+-264 | First Punic War begins | Rome and Carthage contest Sicily.
+-146 | Carthage destroyed | The Third Punic War ends and Corinth falls in the same year.
+-44 | Julius Caesar assassinated | The Ides of March.
+-27 | Augustus becomes emperor | The Senate grants him the name *Augustus* and the Principate begins.
+```
+
+### Non-interactive timeline
+
+With `interactive=false` the same events are written out as a plain list, which suits printing and short timelines. In the editor this is the *Interactive* checkbox of the timeline block.
+
+```timeline interactive=false
+1215 | Magna Carta sealed | King John accepts limits on royal power at Runnymede.
+1517 | Ninety-five Theses | Martin Luther publishes his theses at Wittenberg.
+1687 | Principia published | Newton sets out the laws of motion and universal gravitation.
+1776 | Declaration of Independence | The thirteen colonies announce their separation from Britain.
+```
+
+## Audio
+
+A small audio player. Audio files live in the `media` folder (mp3, wav, ogg, m4a, flac and others) or can be loaded from an address.
+
+::: audio src=media/sample.wav title="A short chime (media/sample.wav)"
+:::
+
+## Searchable CSV data
+
+A CSV file in the `media` folder becomes a searchable table. Every column has its own search box and the boxes combine, so you can ask for states with *Population* over 5 million whose *Capital* contains "ton" (Massachusetts and New Jersey). Text matches anywhere in a cell (any case); `!text` excludes it; `>100`, `<=5` and `=7` compare numbers; `10..20` is a range; `=text` matches the whole cell. The first box searches all columns at once, and a click on a column title sorts the table.
+
+```csvsearch src=media/sample-states.csv height=360
+```
+
+Try *Population* `>5000000` together with *Capital* `ton`, or *State* `new` together with *Population* `<5000000`. The data are the 2020 Census resident populations.
 
 ## Interactive 3D models
 
@@ -307,7 +364,7 @@ Code that runs on remote services is sent to those services. Do not put secrets 
 
 - [Rust documentation](https://doc.rust-lang.org/)
 - [KaTeX supported functions](https://katex.org/docs/supported.html)
-- Other articles on this site, such as [[main-page]]
+- Other articles on this site, such as [[main-page]]; each `[[link]]` is also drawn as a line on the home page's site map
 
 [^1]: A footnote can contain *formatting*, [links](https://en.wikipedia.org/) and mathematics such as $\pi \approx 3.14159$.
 [^2]: Footnote definitions can appear anywhere in the file; they are always listed at the end of the rendered article.

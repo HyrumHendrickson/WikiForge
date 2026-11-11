@@ -392,6 +392,43 @@ function listHtml(items, ctx) {
   return html;
 }
 
+// `interactive=false` (or 0 / off / no) switches a widget to its plain, non-interactive form.
+const isOff = (v) => /^(false|0|off|no)$/i.test(String(v === undefined ? '' : v).trim());
+
+/* ---------------------------------------------------------------- timelines
+   One event per line:  date | title | description
+   Dates may be years (-44, 44 BC, 1066 AD), YYYY-MM-DD, or any text. When every date is
+   numeric the events are sorted and spaced in proportion to their dates. */
+
+function parseWhen(str) {
+  const t = String(str).trim().replace(/^(?:c\.|ca\.|circa)\s*/i, '');
+  const m = /^(-?\d{1,6})(?:-(\d{1,2})(?:-(\d{1,2}))?)?\s*(BCE|BC|CE|AD)?$/i.exec(t);
+  if (!m) return null;
+  let year = parseInt(m[1], 10);
+  if (m[4] && /^b/i.test(m[4])) return -Math.abs(year);
+  if (m[2] && year >= 0) year += (parseInt(m[2], 10) - 1) / 12 + (m[3] ? (parseInt(m[3], 10) - 1) / 372 : 0);
+  return year;
+}
+
+function parseTimeline(text) {
+  const events = [];
+  for (const raw of String(text).split('\n')) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const parts = line.split('|').map((x) => x.trim());
+    events.push({ date: parts[0], title: parts[1] || '', desc: parts.slice(2).join(' | '), when: parseWhen(parts[0]) });
+  }
+  const numeric = events.length > 0 && events.every((e) => e.when !== null);
+  if (numeric) events.sort((a, b) => a.when - b.when);
+  return { events, numeric };
+}
+
+function timelineStaticHtml(events, ctx) {
+  return '<ol class="tl-static">' + events.map((e) =>
+    `<li><span class="tl-date">${esc(e.date)}</span><div class="tl-body"><strong>${inline(e.title, ctx)}</strong>` +
+    (e.desc ? `<p>${inline(e.desc, ctx)}</p>` : '') + '</div></li>').join('') + '</ol>';
+}
+
 function renderFence(lang, attrs, body, ctx) {
   const text = esc(body);
   if (LANGS[lang]) {
@@ -402,7 +439,15 @@ function renderFence(lang, attrs, body, ctx) {
     case 'sheet':
       return `<div class="sheet" data-height="${esc(attrs.height || '')}"><textarea class="sheet-src" hidden>${text}</textarea></div>`;
     case 'map':
-      return `<div class="map-widget" data-height="${esc(attrs.height || '')}"><textarea class="map-src" hidden>${text}</textarea></div>`;
+      return `<div class="map-widget" data-height="${esc(attrs.height || '')}" data-interactive="${isOff(attrs.interactive) ? 0 : 1}"><textarea class="map-src" hidden>${text}</textarea></div>`;
+    case 'timeline': {
+      const tl = parseTimeline(body);
+      if (!tl.events.length) return '<div class="widget-note">This timeline has no events.</div>';
+      if (isOff(attrs.interactive)) return `<div class="timeline-widget tl-plain">${timelineStaticHtml(tl.events, ctx)}</div>`;
+      return `<div class="timeline-widget" data-timeline="${esc(JSON.stringify(tl))}"></div>`;
+    }
+    case 'csvsearch':
+      return `<div class="csv-widget" data-attrs="${esc(JSON.stringify(attrs))}"><textarea class="csv-src" hidden>${text}</textarea></div>`;
     case 'desmos':
       return `<div class="desmos-widget" data-height="${esc(attrs.height || '')}"><textarea class="desmos-src" hidden>${text}</textarea></div>`;
     case 'model':
@@ -427,6 +472,12 @@ function renderDirective(name, attrs, body, ctx) {
       const w = +attrs.width > 0 ? `width:${+attrs.width}px;` : (align === 'center' || align === 'none' ? 'max-width:100%;' : 'width:300px;');
       const cap = attrs.caption ? `<figcaption>${inline(attrs.caption, ctx)}</figcaption>` : '';
       return `<figure class="thumb ${cls}" style="${w}">${mediaHtml(attrs.src || '', attrs.alt || attrs.caption || '')}${cap}</figure>`;
+    }
+    case 'audio': {
+      if (!attrs.src) return '<div class="widget-note">Audio: missing src</div>';
+      const title = attrs.title ? `<div class="au-title">${inline(attrs.title, ctx)}</div>` : '';
+      return `<div class="audio-widget">${title}<audio controls preload="metadata" src="${esc(resolveMedia(attrs.src))}">` +
+        `Your browser does not support audio playback. <a href="${esc(resolveMedia(attrs.src))}">Download the file</a>.</audio></div>`;
     }
     case 'infobox': {
       const { kv, rest } = parseKeyed(body.join('\n'));
@@ -1200,14 +1251,26 @@ function initCodeWidget(el) {
 function initMap(el) {
   const text = el.querySelector('textarea.map-src').value;
   const height = +el.dataset.height || 360;
-  el.innerHTML = `<div class="map-canvas" style="height:${height}px"><div class="widget-loading">Loading map...</div></div>` +
-    '<div class="widget-note">Interactive map. Click the map to enable scroll-zoom.</div>';
+  const interactive = el.dataset.interactive !== '0';
+  el.innerHTML = `<div class="map-canvas${interactive ? '' : ' map-static'}" style="height:${height}px"><div class="widget-loading">Loading map...</div></div>` +
+    `<div class="widget-note">${interactive ? 'Interactive map. Click the map to enable scroll-zoom.' : 'Static map.'}</div>`;
   const host = el.querySelector('.map-canvas');
   loadCss(CONFIG.libs.leafletCss);
   loadScript(CONFIG.libs.leaflet).then(() => {
     host.innerHTML = '';
-    const map = L.map(host, { scrollWheelZoom: false });
-    map.on('click', () => map.scrollWheelZoom.enable());
+    // A non-interactive map is a fixed picture: no panning, zooming, keyboard or popups.
+    // Labels are printed next to the shapes instead, because there is nothing to click.
+    const map = L.map(host, interactive ? { scrollWheelZoom: false } : {
+      dragging: false, touchZoom: false, doubleClickZoom: false, scrollWheelZoom: false,
+      boxZoom: false, keyboard: false, zoomControl: false, tap: false,
+    });
+    if (interactive) map.on('click', () => map.scrollWheelZoom.enable());
+    const shapeOpts = interactive ? {} : { interactive: false };
+    const mark = (layer, label) => {
+      if (!label) return;
+      if (interactive) layer.bindPopup(label);
+      else layer.bindTooltip(label, { permanent: true, direction: 'right' });
+    };
     let tiles = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
     let center = null, zoom = 4;
     const pts = [];
@@ -1225,16 +1288,16 @@ function initMap(el) {
       let label = parts[1];
       if (k === 'marker') {
         const p = ll(spec); if (p.some(isNaN)) continue;
-        const m = L.marker(p).addTo(map); if (label) m.bindPopup(label); pts.push(p);
+        const m = L.marker(p, interactive ? {} : { interactive: false, keyboard: false }).addTo(map); mark(m, label); pts.push(p);
       } else if (k === 'circle') {
         const a = ll(spec); if (a.slice(0, 2).some(isNaN)) continue;
         let radius = a[2];
         if (!isFinite(radius)) { radius = parseFloat(parts[1]); label = parts[2]; }
         if (!isFinite(radius) || radius <= 0) radius = 500;
-        const c = L.circle([a[0], a[1]], { radius }).addTo(map); if (label) c.bindPopup(label); pts.push([a[0], a[1]]);
+        const c = L.circle([a[0], a[1]], Object.assign({ radius }, shapeOpts)).addTo(map); mark(c, label); pts.push([a[0], a[1]]);
       } else if (k === 'line') {
         const path = spec.split(';').map(ll).filter((p) => p.length === 2 && !p.some(isNaN));
-        if (path.length > 1) { const l = L.polyline(path, { color: '#3366cc', weight: 4 }).addTo(map); if (label) l.bindPopup(label); pts.push(...path); }
+        if (path.length > 1) { const l = L.polyline(path, Object.assign({ color: '#3366cc', weight: 4 }, shapeOpts)).addTo(map); mark(l, label); pts.push(...path); }
       }
     }
     if (center && !center.some(isNaN)) map.setView(center, zoom);
@@ -1295,6 +1358,217 @@ function initModel(el) {
   el.appendChild(note);
 }
 
+function initTimeline(el) {
+  const data = JSON.parse(el.dataset.timeline);
+  const events = data.events, n = events.length;
+  const ctx = { fnNumber: new Map(), fnCount: new Map() };
+  const PAD = 80, GAP = 52, PER = 150;
+  el.innerHTML =
+    '<div class="tl-viewport" tabindex="0" aria-label="Timeline. Use the left and right arrow keys to move between events."><div class="tl-track"><div class="tl-axis"></div></div></div>' +
+    '<div class="tl-detail" aria-live="polite"></div>' +
+    '<div class="tl-nav"><button type="button" data-a="prev">Previous</button><span class="tl-count"></span><button type="button" data-a="next">Next</button>' +
+    '<span class="widget-note">Click an event, use the buttons or the arrow keys. Drag the timeline to scroll.</span></div>';
+  const viewport = el.querySelector('.tl-viewport'), track = el.querySelector('.tl-track');
+  const detail = el.querySelector('.tl-detail'), count = el.querySelector('.tl-count');
+  const prev = el.querySelector('[data-a=prev]'), next = el.querySelector('[data-a=next]');
+
+  // x positions: proportional to the dates when all are numeric, otherwise evenly spaced;
+  // neighbours are always at least GAP px apart so the labels cannot pile up
+  const avail = viewport.clientWidth || 640;
+  let xs;
+  if (data.numeric && n > 1) {
+    const min = events[0].when, span = events[n - 1].when - min || 1;
+    const natural = Math.max(n * PER, avail);
+    xs = events.map((e) => PAD + ((e.when - min) / span) * (natural - 2 * PAD));
+  } else xs = events.map((e, i) => PAD + i * PER);
+  for (let i = 1; i < n; i++) if (xs[i] < xs[i - 1] + GAP) xs[i] = xs[i - 1] + GAP;
+  track.style.width = Math.max(avail, xs[n - 1] + PAD) + 'px';
+
+  const lanes = [['up', ''], ['down', ''], ['up', ' far'], ['down', ' far']];
+  const markers = events.map((e, i) => {
+    const [dir, far] = lanes[i % 4];
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'tl-marker ' + dir + far;
+    b.style.left = xs[i] + 'px';
+    b.innerHTML = `<span class="tl-dot"></span><span class="tl-card"><span class="tl-date">${esc(e.date)}</span><span class="tl-name">${esc(e.title)}</span></span>`;
+    b.addEventListener('click', () => select(i, true));
+    track.appendChild(b);
+    return b;
+  });
+
+  let sel = -1;
+  function select(i, scroll) {
+    sel = Math.max(0, Math.min(n - 1, i));
+    markers.forEach((m, k) => { m.classList.toggle('active', k === sel); m.setAttribute('aria-pressed', k === sel ? 'true' : 'false'); });
+    const e = events[sel];
+    detail.innerHTML = `<div class="tl-detail-date">${esc(e.date)}</div><h4 class="tl-detail-title">${inline(e.title, ctx)}</h4>` +
+      (e.desc ? `<div class="tl-detail-text">${inline(e.desc, ctx)}</div>` : '');
+    if (/\$/.test(e.title + e.desc)) renderMath(detail);
+    count.textContent = (sel + 1) + ' / ' + n;
+    prev.disabled = sel === 0; next.disabled = sel === n - 1;
+    if (scroll) viewport.scrollTo({ left: Math.max(0, xs[sel] - viewport.clientWidth / 2), behavior: 'smooth' });
+  }
+  prev.addEventListener('click', () => select(sel - 1, true));
+  next.addEventListener('click', () => select(sel + 1, true));
+  viewport.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); select(sel + 1, true); }
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); select(sel - 1, true); }
+    else if (e.key === 'Home') { e.preventDefault(); select(0, true); }
+    else if (e.key === 'End') { e.preventDefault(); select(n - 1, true); }
+  });
+
+  // drag to scroll with a mouse (touch and trackpads scroll natively)
+  let drag = null;
+  viewport.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'mouse' || e.button !== 0 || e.target.closest('.tl-marker')) return;
+    drag = { x: e.clientX, left: viewport.scrollLeft };
+    viewport.setPointerCapture(e.pointerId);
+    viewport.classList.add('dragging');
+  });
+  viewport.addEventListener('pointermove', (e) => { if (drag) viewport.scrollLeft = drag.left - (e.clientX - drag.x); });
+  const stop = () => { drag = null; viewport.classList.remove('dragging'); };
+  viewport.addEventListener('pointerup', stop);
+  viewport.addEventListener('pointercancel', stop);
+
+  select(0, false);
+}
+
+/* ---------------------------------------------------------------- CSV search
+   Fetches a CSV file and shows it as a table with one search box per column, a search box
+   for all columns, and click-to-sort headers.
+   Column boxes:  text  = contains (any case)   !text = does not contain   =text = exactly
+                  >100  <=5  =7  = compare numbers      10..20 = number range             */
+
+const CSV_NUM = '-?\\d[\\d,]*(?:\\.\\d+)?';
+const csvNum = (c) => {
+  const t = String(c).replace(/[,$%\s]/g, '');
+  return /^[-+]?(\d+\.?\d*|\.\d+)$/.test(t) ? parseFloat(t) : NaN;
+};
+
+function csvMatcher(term) {
+  term = term.trim();
+  if (!term) return null;
+  let m = new RegExp('^(>=|<=|>|<|=)\\s*(' + CSV_NUM + ')$').exec(term);
+  if (m) {
+    const op = m[1], v = csvNum(m[2]);
+    return (c) => {
+      const x = csvNum(c);
+      if (isNaN(x)) return false;
+      return op === '>' ? x > v : op === '<' ? x < v : op === '>=' ? x >= v : op === '<=' ? x <= v : x === v;
+    };
+  }
+  m = new RegExp('^(' + CSV_NUM + ')\\s*\\.\\.\\s*(' + CSV_NUM + ')$').exec(term);
+  if (m) {
+    let lo = csvNum(m[1]), hi = csvNum(m[2]);
+    if (lo > hi) [lo, hi] = [hi, lo];
+    return (c) => { const x = csvNum(c); return !isNaN(x) && x >= lo && x <= hi; };
+  }
+  if (term[0] === '=' && term.length > 1) { const q = term.slice(1).trim().toLowerCase(); return (c) => c.trim().toLowerCase() === q; }
+  if (term[0] === '!' && term.length > 1) { const q = term.slice(1).trim().toLowerCase(); return (c) => !c.toLowerCase().includes(q); }
+  const q = term.toLowerCase();
+  return (c) => c.toLowerCase().includes(q);
+}
+
+async function initCsvSearch(el) {
+  const a = JSON.parse(el.dataset.attrs || '{}');
+  const inlineText = (el.querySelector('textarea.csv-src') || { value: '' }).value;
+  const height = +a.height || 360;
+  const PAGE = 100;
+  el.innerHTML = '<div class="widget-loading">Loading data...</div>';
+  let text = inlineText;
+  if (a.src) {
+    try {
+      const r = await fetch(resolveMedia(a.src));
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      text = await r.text();
+    } catch (e) {
+      el.innerHTML = `<div class="widget-loading">Could not load ${esc(a.src)} (${esc(e.message)}).` +
+        (location.protocol === 'file:' ? ' Serve the site over HTTP; browsers block fetch() on file:// pages.' : '') + '</div>';
+      return;
+    }
+  }
+  const rows = parseCSV(text.replace(/^\uFEFF/, ''));
+  if (!text.trim() || !rows.length) { el.innerHTML = '<div class="widget-loading">This CSV file is empty.</div>'; return; }
+  const header = rows[0], ncol = header.length;
+  const data = rows.slice(1).map((r) => { const c = r.slice(0, ncol); while (c.length < ncol) c.push(''); return c; });
+  const hay = data.map((r) => r.join('\u0001').toLowerCase());
+  const isNum = header.map((_, c) => {
+    let seen = 0, ok = 0;
+    for (const r of data) if (r[c].trim() !== '') { seen++; if (!isNaN(csvNum(r[c]))) ok++; }
+    return seen > 0 && ok / seen >= 0.9;
+  });
+
+  el.innerHTML =
+    '<div class="csvs"><div class="csvs-top"><input type="search" class="csvs-all" placeholder="Search all columns" aria-label="Search all columns">' +
+    '<span class="csvs-count"></span><button type="button" class="csvs-clear">Clear</button></div>' +
+    `<div class="csvs-scroll" style="max-height:${height}px"><table class="csvs-table"><thead>` +
+    '<tr class="csvs-heads">' + header.map((h, c) => `<th data-c="${c}" class="${isNum[c] ? 'num' : ''}" title="Click to sort">${esc(h)}<span class="csvs-arrow"></span></th>`).join('') + '</tr>' +
+    '<tr class="csvs-filters">' + header.map((h, c) => `<th><input type="search" data-c="${c}" placeholder="${esc(h)}" aria-label="Search ${esc(h)}"></th>`).join('') + '</tr>' +
+    '</thead><tbody></tbody></table></div><div class="csvs-more"></div>' +
+    '<div class="widget-note">Type in any box; the boxes combine. Text matches anywhere in a cell, <code>!text</code> excludes it, ' +
+    '<code>&gt;100</code> or <code>&lt;=5</code> compare numbers, <code>10..20</code> is a range. Click a column title to sort.</div></div>';
+
+  // the filter row sticks just below the title row, whatever its rendered height
+  const headH = el.querySelector('.csvs-heads').offsetHeight;
+  if (headH) el.querySelectorAll('.csvs-filters th').forEach((t) => { t.style.top = headH + 'px'; });
+  const $all = el.querySelector('.csvs-all'), $count = el.querySelector('.csvs-count'), $more = el.querySelector('.csvs-more');
+  const $body = el.querySelector('tbody'), $inputs = [...el.querySelectorAll('.csvs-filters input')];
+  const $heads = [...el.querySelectorAll('.csvs-heads th')];
+  let sortCol = -1, sortDir = 1, shown = PAGE, matches = [];
+
+  function apply() {
+    const ms = $inputs.map((i) => csvMatcher(i.value));
+    const toks = $all.value.toLowerCase().split(/\s+/).filter(Boolean);
+    matches = [];
+    for (let i = 0; i < data.length; i++) {
+      if (toks.length && !toks.every((t) => hay[i].includes(t))) continue;
+      let ok = true;
+      for (let c = 0; c < ncol && ok; c++) if (ms[c] && !ms[c](data[i][c])) ok = false;
+      if (ok) matches.push(i);
+    }
+    if (sortCol >= 0) {
+      const c = sortCol, d = sortDir;
+      if (isNum[c]) {
+        matches.sort((x, y) => {
+          const p = csvNum(data[x][c]), q = csvNum(data[y][c]);
+          if (isNaN(p) && isNaN(q)) return 0;
+          if (isNaN(p)) return 1;
+          if (isNaN(q)) return -1;
+          return (p - q) * d;
+        });
+      } else {
+        matches.sort((x, y) => data[x][c].localeCompare(data[y][c], undefined, { numeric: true, sensitivity: 'base' }) * d);
+      }
+    }
+    shown = PAGE;
+    paint();
+  }
+
+  function paint() {
+    const part = matches.slice(0, shown);
+    $body.innerHTML = part.length
+      ? part.map((i) => '<tr>' + data[i].map((v, c) => `<td${isNum[c] ? ' class="num"' : ''}>${esc(v)}</td>`).join('') + '</tr>').join('')
+      : `<tr><td colspan="${ncol}" class="csvs-none">No matching rows.</td></tr>`;
+    $count.textContent = matches.length === data.length ? `${data.length} rows` : `${matches.length} of ${data.length} rows`;
+    $more.innerHTML = matches.length > shown
+      ? `<button type="button">Show ${Math.min(PAGE, matches.length - shown)} more</button> <span class="widget-note">Showing ${shown} of ${matches.length}. Narrow the search to see the rest.</span>` : '';
+    $heads.forEach((h, c) => { h.querySelector('.csvs-arrow').textContent = c === sortCol ? (sortDir === 1 ? ' \u25B2' : ' \u25BC') : ''; });
+  }
+
+  let timer = 0;
+  const schedule = () => { clearTimeout(timer); timer = setTimeout(apply, data.length > 2000 ? 150 : 0); };
+  $all.addEventListener('input', schedule);
+  $inputs.forEach((i) => i.addEventListener('input', schedule));
+  $heads.forEach((h, c) => h.addEventListener('click', () => {
+    if (sortCol === c) { if (sortDir === 1) sortDir = -1; else { sortCol = -1; sortDir = 1; } } else { sortCol = c; sortDir = 1; }
+    apply();
+  }));
+  el.querySelector('.csvs-clear').addEventListener('click', () => { $all.value = ''; $inputs.forEach((i) => { i.value = ''; }); sortCol = -1; sortDir = 1; apply(); });
+  $more.addEventListener('click', (e) => { if (e.target.closest('button')) { shown += PAGE; paint(); } });
+  apply();
+}
+
 async function renderMath(root) {
   const nodes = root.querySelectorAll('[data-tex]');
   if (!nodes.length) return;
@@ -1313,6 +1587,8 @@ function initWidgets(root) {
   root.querySelectorAll('.map-widget').forEach((el) => lazy(el, () => initMap(el)));
   root.querySelectorAll('.desmos-widget').forEach((el) => lazy(el, () => initDesmos(el)));
   root.querySelectorAll('.model-widget').forEach((el) => lazy(el, () => initModel(el)));
+  root.querySelectorAll('.timeline-widget[data-timeline]').forEach((el) => lazy(el, () => initTimeline(el)));
+  root.querySelectorAll('.csv-widget').forEach((el) => lazy(el, () => initCsvSearch(el)));
 }
 
 /* ==========================================================================
@@ -1336,8 +1612,14 @@ async function boot() {
     slug = main ? main.slug : '';
   }
 
+  // The sidebar lists only the featured articles (older manifests have no list: show everything).
+  // Every other article is reachable through search, the home page and the site map.
+  const featured = Array.isArray(manifest.featured) ? new Set(manifest.featured) : null;
+  const sidebar = pages.filter((p) => !featured || featured.has(p.slug));
+  const here = pages.find((p) => p.slug === slug);
+  if (here && !sidebar.includes(here)) sidebar.push(here);
   const list = $('sidebar-list');
-  for (const p of pages) {
+  for (const p of sidebar) {
     const li = document.createElement('li');
     if (p.slug === slug) li.className = 'current';
     const a = document.createElement('a');

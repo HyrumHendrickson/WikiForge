@@ -18,18 +18,40 @@
   <div class="wk-layout">
     <nav class="wk-sidebar">
       <h3>Navigation</h3>
-      <ul><li><a href="index.html">Main page</a></li></ul>
-      <h3>Articles</h3>
+      <ul>
+        <li><a href="index.html">Main page</a></li>
+        <li><a href="#map">Site map</a></li>
+        <li><a href="#all">All articles</a></li>
+      </ul>
+      <h3>Featured articles</h3>
       <ul id="sidebar-list"></ul>
     </nav>
 
     <main class="wk-main">
       <h1 id="home-title">Welcome</h1>
-      <p class="home-intro">This is a collection of interactive articles. Pick one below or use the search box.</p>
+      <p class="home-intro">This is a collection of interactive articles. Explore the site map, pick a featured article, or use the search box.</p>
+
+      <div class="home-panel" id="map">
+        <h2>Site map</h2>
+        <div id="graph" class="graph"></div>
+      </div>
+
       <div class="home-panel">
-        <h2>All articles</h2>
+        <h2>Featured articles</h2>
         <ul id="article-list" class="article-list"></ul>
         <p id="empty" class="muted" hidden>No articles yet.</p>
+        <p id="no-featured" class="muted" hidden>No featured articles yet. Choose them in the editor under Site &gt; Featured articles.</p>
+      </div>
+
+      <div class="home-panel" id="all">
+        <h2>All articles</h2>
+        <div class="all-bar">
+          <input id="all-filter" type="search" placeholder="Filter all articles by title" autocomplete="off">
+          <span id="all-info" class="muted"></span>
+          <button id="all-prev" type="button">Previous</button>
+          <button id="all-next" type="button">Next</button>
+        </div>
+        <ul id="all-list" class="article-list"></ul>
       </div>
     </main>
   </div>

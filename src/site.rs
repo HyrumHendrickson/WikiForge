@@ -6,9 +6,11 @@
 //!   media/                                 images, videos, 3D models
 //!   page/index.html index.css index.js     article viewer
 //!   pages/*.md                             one Markdown file per article
-//!   pages/pages.json                       list of articles (written by the editor)
+//!   pages/pages.json                       article list, featured list and cross references
+//!                                          (written by the editor)
 //! ```
 
+use std::collections::{BTreeSet, HashSet};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -26,10 +28,29 @@ pub const SHOWCASE_MD: &str = include_str!("../assets/showcase.md");
 const MAIN_PAGE_MD: &str = include_str!("../assets/main-page.md");
 const SAMPLE_SVG: &[u8] = include_bytes!("../assets/media/sample.svg");
 const SAMPLE_GIF: &[u8] = include_bytes!("../assets/media/sample.gif");
+const SAMPLE_WAV: &[u8] = include_bytes!("../assets/media/sample.wav");
+const SAMPLE_CSV: &[u8] = include_bytes!("../assets/media/sample-states.csv");
 
 pub const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "avif"];
 pub const VIDEO_EXTS: &[&str] = &["mp4", "webm", "ogv", "mov", "m4v"];
 pub const MODEL_EXTS: &[&str] = &["glb", "gltf"];
+pub const AUDIO_EXTS: &[&str] = &["mp3", "wav", "ogg", "oga", "m4a", "aac", "flac", "opus"];
+pub const CSV_EXTS: &[&str] = &["csv"];
+
+/// Cross references used by the example articles: `Example n` links to each listed number.
+/// Chosen so that the site map shows a connected graph with a few cycles and chords.
+const EXAMPLE_LINKS: [&[usize]; 10] = [
+    &[2, 3, 5],
+    &[3, 4],
+    &[4, 6],
+    &[5, 7],
+    &[6, 8],
+    &[7, 9],
+    &[8, 10],
+    &[9, 1],
+    &[10, 2],
+    &[1, 4],
+];
 
 #[derive(Clone)]
 pub struct Site {
@@ -41,6 +62,10 @@ pub struct Site {
 pub struct PageInfo {
     pub slug: String,
     pub title: String,
+    /// Slugs of existing articles this one links to with `[[...]]` (the edges of the site map).
+    pub links: Vec<String>,
+    /// Featured articles are the ones listed in the sidebar.
+    pub featured: bool,
 }
 
 pub fn ext_of(path: &str) -> String {
@@ -78,12 +103,9 @@ fn json_escape(s: &str) -> String {
     o
 }
 
-fn json_unescape_first(text: &str, key: &str) -> Option<String> {
-    let pat = format!("\"{key}\"");
-    let at = text.find(&pat)? + pat.len();
-    let rest = text[at..].trim_start().strip_prefix(':')?.trim_start().strip_prefix('"')?;
+/// Reads the rest of a JSON string (the opening quote has been consumed) up to the closing quote.
+fn read_json_string(chars: &mut std::str::Chars) -> Option<String> {
     let mut out = String::new();
-    let mut chars = rest.chars();
     while let Some(c) = chars.next() {
         match c {
             '"' => return Some(out),
@@ -101,6 +123,86 @@ fn json_unescape_first(text: &str, key: &str) -> Option<String> {
         }
     }
     None
+}
+
+fn json_unescape_first(text: &str, key: &str) -> Option<String> {
+    let pat = format!("\"{key}\"");
+    let at = text.find(&pat)? + pat.len();
+    let rest = text[at..].trim_start().strip_prefix(':')?.trim_start().strip_prefix('"')?;
+    read_json_string(&mut rest.chars())
+}
+
+/// First `"key": ["a", "b"]` in a JSON text, as a list of strings. `None` when the key is absent.
+fn json_string_array(text: &str, key: &str) -> Option<Vec<String>> {
+    let pat = format!("\"{key}\"");
+    let at = text.find(&pat)? + pat.len();
+    let rest = text[at..].trim_start().strip_prefix(':')?.trim_start().strip_prefix('[')?;
+    let mut chars = rest.chars();
+    let mut out = Vec::new();
+    loop {
+        match chars.next()? {
+            '"' => out.push(read_json_string(&mut chars)?),
+            ']' => return Some(out),
+            _ => {}
+        }
+    }
+}
+
+fn json_array(items: &[String]) -> String {
+    format!("[{}]", items.iter().map(|s| format!("\"{}\"", json_escape(s))).collect::<Vec<_>>().join(", "))
+}
+
+/// Slugs of the articles that `md` links to with `[[Page]]`, `[[Page|label]]` or `[x](wiki:Page)`.
+/// Fenced code (including sheets, maps and so on) is ignored. Order of first appearance, no duplicates.
+pub fn extract_links(md: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut seen = HashSet::new();
+    let mut push = |name: &str| {
+        let name = name.split('#').next().unwrap_or("").trim();
+        if name.is_empty() {
+            return;
+        }
+        let slug = slugify(name);
+        if seen.insert(slug.clone()) {
+            out.push(slug);
+        }
+    };
+    let mut in_fence = false;
+    for line in md.lines() {
+        if line.starts_with("```") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if in_fence {
+            continue;
+        }
+        // text inside `code spans` is not a link
+        let mut plain = String::with_capacity(line.len());
+        let mut in_code = false;
+        for c in line.chars() {
+            if c == '`' {
+                in_code = !in_code;
+            } else if !in_code {
+                plain.push(c);
+            }
+        }
+        let line = plain.as_str();
+        let mut rest = line;
+        while let Some(at) = rest.find("[[") {
+            let after = &rest[at + 2..];
+            let Some(end) = after.find("]]") else { break };
+            push(after[..end].split('|').next().unwrap_or(""));
+            rest = &after[end + 2..];
+        }
+        let mut rest = line;
+        while let Some(at) = rest.find("](wiki:") {
+            let after = &rest[at + 7..];
+            let end = after.find(')').unwrap_or(after.len());
+            push(&after[..end]);
+            rest = &after[end..];
+        }
+    }
+    out
 }
 
 impl Site {
@@ -179,42 +281,95 @@ impl Site {
         fs::read_to_string(self.page_path(slug))
     }
 
-    pub fn write_page(&self, slug: &str, md: &str) -> io::Result<()> {
+    /// Writes the article and refreshes `pages.json`. Returns the refreshed article list.
+    pub fn write_page(&self, slug: &str, md: &str) -> io::Result<Vec<PageInfo>> {
         fs::write(self.page_path(slug), md)?;
-        self.write_manifest()
+        self.refresh()
     }
 
-    pub fn delete_page(&self, slug: &str) -> io::Result<()> {
+    pub fn delete_page(&self, slug: &str) -> io::Result<Vec<PageInfo>> {
         fs::remove_file(self.page_path(slug))?;
-        self.write_manifest()
+        self.refresh()
     }
 
-    pub fn page_infos(&self) -> Vec<PageInfo> {
-        self.list_pages()
-            .into_iter()
+    /// The featured slugs stored in `pages.json`. `None` for sites written before featured
+    /// articles existed; those start with every article featured.
+    fn read_featured(&self) -> Option<BTreeSet<String>> {
+        let text = fs::read_to_string(self.pages_dir().join("pages.json")).ok()?;
+        json_string_array(&text, "featured").map(|v| v.into_iter().collect())
+    }
+
+    /// Reads every article once for its title and cross references.
+    fn scan(&self, featured: &BTreeSet<String>) -> Vec<PageInfo> {
+        let slugs = self.list_pages();
+        let existing: HashSet<&str> = slugs.iter().map(|s| s.as_str()).collect();
+        slugs
+            .iter()
             .map(|slug| {
-                let title = self
-                    .read_page(&slug)
-                    .ok()
-                    .and_then(|t| extract_title(&t))
-                    .unwrap_or_else(|| slug.replace('-', " "));
-                PageInfo { slug, title }
+                let md = self.read_page(slug).unwrap_or_default();
+                let title = extract_title(&md).unwrap_or_else(|| slug.replace('-', " "));
+                let links = extract_links(&md).into_iter().filter(|l| l != slug && existing.contains(l.as_str())).collect();
+                PageInfo { slug: slug.clone(), title, links, featured: featured.contains(slug) }
             })
             .collect()
     }
 
-    pub fn write_manifest(&self) -> io::Result<()> {
-        let pages: Vec<String> = self
-            .page_infos()
+    fn effective_featured(&self) -> BTreeSet<String> {
+        self.read_featured().unwrap_or_else(|| self.list_pages().into_iter().collect())
+    }
+
+    pub fn page_infos(&self) -> Vec<PageInfo> {
+        self.scan(&self.effective_featured())
+    }
+
+    fn write_json(&self, infos: &[PageInfo]) -> io::Result<()> {
+        let featured: Vec<String> = infos.iter().filter(|p| p.featured).map(|p| p.slug.clone()).collect();
+        let pages: Vec<String> = infos
             .iter()
-            .map(|p| format!("    {{ \"slug\": \"{}\", \"title\": \"{}\" }}", json_escape(&p.slug), json_escape(&p.title)))
+            .map(|p| {
+                format!(
+                    "    {{ \"slug\": \"{}\", \"title\": \"{}\", \"links\": {} }}",
+                    json_escape(&p.slug),
+                    json_escape(&p.title),
+                    json_array(&p.links)
+                )
+            })
             .collect();
+        // `siteTitle` and `featured` come before `pages` so that readers looking for the first
+        // occurrence of a key can never match an article title.
         let json = format!(
-            "{{\n  \"siteTitle\": \"{}\",\n  \"pages\": [\n{}\n  ]\n}}\n",
+            "{{\n  \"siteTitle\": \"{}\",\n  \"featured\": {},\n  \"pages\": [\n{}\n  ]\n}}\n",
             json_escape(&self.title),
+            json_array(&featured),
             pages.join(",\n")
         );
         fs::write(self.pages_dir().join("pages.json"), json)
+    }
+
+    /// Rescans the articles and rewrites `pages.json`.
+    pub fn refresh(&self) -> io::Result<Vec<PageInfo>> {
+        let infos = self.scan(&self.effective_featured());
+        self.write_json(&infos)?;
+        Ok(infos)
+    }
+
+    pub fn write_manifest(&self) -> io::Result<()> {
+        self.refresh().map(|_| ())
+    }
+
+    /// Marks the given articles as featured (or not) and rewrites `pages.json`.
+    pub fn set_featured(&self, slugs: &[String], on: bool) -> io::Result<Vec<PageInfo>> {
+        let mut set = self.effective_featured();
+        for s in slugs {
+            if on {
+                set.insert(s.clone());
+            } else {
+                set.remove(s);
+            }
+        }
+        let infos = self.scan(&set);
+        self.write_json(&infos)?;
+        Ok(infos)
     }
 
     /// Copies a file into `media/` (choosing a free name) and returns the path relative to the site root.
@@ -247,15 +402,36 @@ impl Site {
     pub fn write_showcase(&self) -> io::Result<String> {
         let media = self.root.join("media");
         fs::create_dir_all(&media)?;
-        for (name, bytes) in [("sample.svg", SAMPLE_SVG), ("sample.gif", SAMPLE_GIF)] {
+        for (name, bytes) in [("sample.svg", SAMPLE_SVG), ("sample.gif", SAMPLE_GIF), ("sample.wav", SAMPLE_WAV), ("sample-states.csv", SAMPLE_CSV)] {
             let p = media.join(name);
             if !p.exists() {
                 fs::write(p, bytes)?;
             }
         }
         fs::write(self.page_path("showcase"), SHOWCASE_MD)?;
-        self.write_manifest()?;
+        self.set_featured(&["showcase".to_string()], true)?;
         Ok("showcase".to_string())
+    }
+
+    /// Writes `Example 1` ... `Example 10`, cross-linked, so the site map has something to show.
+    /// Existing articles with those names are left alone. Returns how many were created.
+    pub fn write_examples(&self) -> io::Result<usize> {
+        let mut created = 0;
+        for n in 1..=EXAMPLE_LINKS.len() {
+            let path = self.page_path(&format!("example-{n}"));
+            if path.exists() {
+                continue;
+            }
+            let links: Vec<String> = EXAMPLE_LINKS[n - 1].iter().map(|m| format!("[[Example {m}]]")).collect();
+            let md = format!(
+                "# Example {n}\n\nThis is example article {n}. It is one of ten linked articles that show how the site map on the home page draws articles as nodes and cross references as edges.\n\nSee also: {}.\n",
+                links.join(", ")
+            );
+            fs::write(path, md)?;
+            created += 1;
+        }
+        self.write_manifest()?;
+        Ok(created)
     }
 
     pub fn media_path(&self, rel: &str) -> PathBuf {
@@ -279,9 +455,76 @@ mod tests {
         assert_eq!(reopened.list_pages(), vec!["main-page".to_string(), "showcase".to_string()]);
         let infos = reopened.page_infos();
         assert_eq!(infos[1].title, "Interactive Article Showcase");
-        for f in ["index.html", "index.css", "index.js", "page/index.html", "page/index.css", "page/index.js", "pages/pages.json", "media/sample.svg", "media/sample.gif"] {
+        for f in ["index.html", "index.css", "index.js", "page/index.html", "page/index.css", "page/index.js", "pages/pages.json", "media/sample.svg", "media/sample.gif", "media/sample.wav", "media/sample-states.csv"] {
             assert!(dir.join(f).is_file(), "missing {f}");
         }
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn links_are_extracted() {
+        let md = "See [[Main Page]] and [[Other|label]], [[main-page]] again, [x](wiki:Third Page#sec).\n```\n[[ignored]]\n```\n[[ ]]\nNot a link: `[[code]]`, but [[after code]] is.";
+        assert_eq!(extract_links(md), vec!["main-page", "other", "third-page", "after-code"]);
+    }
+
+    #[test]
+    fn json_arrays() {
+        let t = "{\"siteTitle\": \"A \\\"featured\\\" wiki\", \"featured\": [\"a\", \"b\\\"c\"], \"pages\": []}";
+        assert_eq!(json_string_array(t, "featured").unwrap(), vec!["a".to_string(), "b\"c".to_string()]);
+        assert!(json_string_array("{\"pages\": []}", "featured").is_none());
+        assert_eq!(json_string_array("{\"featured\": []}", "featured").unwrap().len(), 0);
+    }
+
+    #[test]
+    fn featured_and_examples() {
+        let dir = std::env::temp_dir().join(format!("wikiforge-feat-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let site = Site::create(&dir, "Feat").unwrap();
+        // a new site features only the main page; the showcase is added to the featured list
+        assert_eq!(site.write_examples().unwrap(), 10);
+        assert_eq!(site.write_examples().unwrap(), 0, "existing examples are not overwritten");
+        let infos = site.page_infos();
+        assert_eq!(infos.len(), 11);
+        assert_eq!(infos.iter().filter(|p| p.featured).map(|p| p.slug.as_str()).collect::<Vec<_>>(), vec!["main-page"]);
+        let ex1 = infos.iter().find(|p| p.slug == "example-1").unwrap();
+        assert_eq!(ex1.links, vec!["example-2", "example-3", "example-5"]);
+        assert_eq!(ex1.title, "Example 1");
+
+        // every example is reachable from every other one
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut stack = vec!["example-1".to_string()];
+        while let Some(s) = stack.pop() {
+            if seen.insert(s.clone()) {
+                let info = infos.iter().find(|p| p.slug == s).unwrap();
+                stack.extend(info.links.iter().cloned());
+            }
+        }
+        assert_eq!(seen.len(), 10);
+
+        let after = site.set_featured(&["example-3".to_string(), "example-4".to_string()], true).unwrap();
+        assert_eq!(after.iter().filter(|p| p.featured).count(), 3);
+        site.write_showcase().unwrap();
+        let reopened = Site::open(&dir).unwrap();
+        let feats: Vec<String> = reopened.page_infos().into_iter().filter(|p| p.featured).map(|p| p.slug).collect();
+        assert_eq!(feats, vec!["example-3", "example-4", "main-page", "showcase"]);
+        let json = fs::read_to_string(dir.join("pages/pages.json")).unwrap();
+        assert!(json.contains("\"featured\": [\"example-3\", \"example-4\", \"main-page\", \"showcase\"]"));
+        // deleting a featured article drops it from the list
+        let after = reopened.delete_page("example-3").unwrap();
+        assert!(after.iter().all(|p| p.slug != "example-3"));
+        assert!(!fs::read_to_string(dir.join("pages/pages.json")).unwrap().contains("\"example-3\","));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn legacy_manifest_features_everything() {
+        let dir = std::env::temp_dir().join(format!("wikiforge-legacy-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let site = Site::create(&dir, "Old").unwrap();
+        site.write_examples().unwrap();
+        fs::write(dir.join("pages/pages.json"), "{ \"siteTitle\": \"Old\", \"pages\": [] }").unwrap();
+        let infos = Site::open(&dir).unwrap().page_infos();
+        assert!(infos.iter().all(|p| p.featured));
         let _ = fs::remove_dir_all(&dir);
     }
 
