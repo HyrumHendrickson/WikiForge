@@ -4,11 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Article</title>
+  <link rel="icon" id="favicon" href="data:,">
   <link rel="stylesheet" href="index.css">
 </head>
 <body>
   <header class="wk-header">
-    <a class="wk-logo" href="../index.html"><span class="wk-globe">W</span><span id="site-title">Wiki</span></a>
+    <a class="wk-logo" href="../index.html"><img id="site-logo" class="wk-logo-img" alt="" hidden><span id="site-globe" class="wk-globe">W</span><span id="site-title">Wiki</span></a>
     <div class="wk-search">
       <input id="search" type="search" placeholder="Search articles" autocomplete="off">
       <div id="search-results" class="search-results"></div>
@@ -17,12 +18,6 @@
 
   <div class="wk-layout">
     <nav class="wk-sidebar">
-      <h3>Navigation</h3>
-      <ul>
-        <li><a href="../index.html">Main page</a></li>
-        <li><a href="../index.html#map">Site map</a></li>
-        <li><a href="../index.html#all">All articles</a></li>
-      </ul>
       <h3>Featured articles</h3>
       <ul id="sidebar-list"></ul>
     </nav>

@@ -6,7 +6,8 @@
 //!   media/                                 images, videos, 3D models
 //!   page/index.html index.css index.js     article viewer
 //!   pages/*.md                             one Markdown file per article
-//!   pages/pages.json                       article list, featured list and cross references
+//!   media/site-logo.*                      the site logo (default: the WikiForge logo)
+//!   pages/pages.json                       article list, logo, featured list and cross references
 //!                                          (written by the editor)
 //! ```
 
@@ -25,7 +26,8 @@ const PAGE_CSS: &str = include_str!("../assets/page/index.css");
 const PAGE_JS: &str = include_str!("../assets/page/index.js");
 
 pub const SHOWCASE_MD: &str = include_str!("../assets/showcase.md");
-const MAIN_PAGE_MD: &str = include_str!("../assets/main-page.md");
+/// The default logo of a new site (and the icon of the editor itself).
+pub const DEFAULT_LOGO: &[u8] = include_bytes!("../assets/logo.webp");
 const SAMPLE_SVG: &[u8] = include_bytes!("../assets/media/sample.svg");
 const SAMPLE_GIF: &[u8] = include_bytes!("../assets/media/sample.gif");
 const SAMPLE_WAV: &[u8] = include_bytes!("../assets/media/sample.wav");
@@ -237,10 +239,7 @@ impl Site {
         fs::create_dir_all(root.join("pages"))?;
         let site = Site { root: root.to_path_buf(), title: title.to_string() };
         site.write_templates()?;
-        if site.list_pages().is_empty() {
-            fs::write(root.join("pages").join("main-page.md"), MAIN_PAGE_MD)?;
-        }
-        site.write_manifest()?;
+        site.reset_logo()?;
         Ok(site)
     }
 
@@ -299,6 +298,51 @@ impl Site {
         json_string_array(&text, "featured").map(|v| v.into_iter().collect())
     }
 
+    /// The logo path (relative to the site root) stored in `pages.json`. `None` for sites
+    /// written before logos existed; their pages show the plain letter badge.
+    pub fn read_logo(&self) -> Option<String> {
+        let text = fs::read_to_string(self.pages_dir().join("pages.json")).ok()?;
+        json_unescape_first(&text, "logo").filter(|l| !l.is_empty())
+    }
+
+    /// Removes `media/site-logo.<ext>` for every image extension except `keep`.
+    fn remove_logo_files(&self, keep: &str) {
+        for ext in IMAGE_EXTS.iter().filter(|e| **e != keep) {
+            let _ = fs::remove_file(self.root.join("media").join(format!("site-logo.{ext}")));
+        }
+    }
+
+    /// Uses the chosen image as the site logo: copies it to `media/site-logo.<ext>` and records it
+    /// in `pages.json`. Returns the path relative to the site root.
+    pub fn set_logo(&self, src: &Path) -> io::Result<String> {
+        let ext = ext_of(&src.to_string_lossy());
+        if !IMAGE_EXTS.contains(&ext.as_str()) {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "the logo must be an image (png, jpg, gif, webp, svg, bmp or avif)"));
+        }
+        let media = self.root.join("media");
+        fs::create_dir_all(&media)?;
+        let dest = media.join(format!("site-logo.{ext}"));
+        let same = matches!((src.canonicalize(), dest.canonicalize()), (Ok(a), Ok(b)) if a == b);
+        if !same {
+            fs::copy(src, &dest)?;
+        }
+        self.remove_logo_files(&ext);
+        let rel = format!("media/site-logo.{ext}");
+        self.write_json(&self.scan(&self.effective_featured()), Some(&rel))?;
+        Ok(rel)
+    }
+
+    /// Restores the default WikiForge logo.
+    pub fn reset_logo(&self) -> io::Result<String> {
+        let media = self.root.join("media");
+        fs::create_dir_all(&media)?;
+        fs::write(media.join("site-logo.webp"), DEFAULT_LOGO)?;
+        self.remove_logo_files("webp");
+        let rel = "media/site-logo.webp".to_string();
+        self.write_json(&self.scan(&self.effective_featured()), Some(&rel))?;
+        Ok(rel)
+    }
+
     /// Reads every article once for its title and cross references.
     fn scan(&self, featured: &BTreeSet<String>) -> Vec<PageInfo> {
         let slugs = self.list_pages();
@@ -322,7 +366,7 @@ impl Site {
         self.scan(&self.effective_featured())
     }
 
-    fn write_json(&self, infos: &[PageInfo]) -> io::Result<()> {
+    fn write_json(&self, infos: &[PageInfo], logo: Option<&str>) -> io::Result<()> {
         let featured: Vec<String> = infos.iter().filter(|p| p.featured).map(|p| p.slug.clone()).collect();
         let pages: Vec<String> = infos
             .iter()
@@ -335,11 +379,13 @@ impl Site {
                 )
             })
             .collect();
-        // `siteTitle` and `featured` come before `pages` so that readers looking for the first
-        // occurrence of a key can never match an article title.
+        // `siteTitle`, `logo` and `featured` come before `pages` so that readers looking for the
+        // first occurrence of a key can never match an article title.
+        let logo_line = logo.map(|l| format!("  \"logo\": \"{}\",\n", json_escape(l))).unwrap_or_default();
         let json = format!(
-            "{{\n  \"siteTitle\": \"{}\",\n  \"featured\": {},\n  \"pages\": [\n{}\n  ]\n}}\n",
+            "{{\n  \"siteTitle\": \"{}\",\n{}  \"featured\": {},\n  \"pages\": [\n{}\n  ]\n}}\n",
             json_escape(&self.title),
+            logo_line,
             json_array(&featured),
             pages.join(",\n")
         );
@@ -349,7 +395,7 @@ impl Site {
     /// Rescans the articles and rewrites `pages.json`.
     pub fn refresh(&self) -> io::Result<Vec<PageInfo>> {
         let infos = self.scan(&self.effective_featured());
-        self.write_json(&infos)?;
+        self.write_json(&infos, self.read_logo().as_deref())?;
         Ok(infos)
     }
 
@@ -368,7 +414,7 @@ impl Site {
             }
         }
         let infos = self.scan(&set);
-        self.write_json(&infos)?;
+        self.write_json(&infos, self.read_logo().as_deref())?;
         Ok(infos)
     }
 
@@ -452,10 +498,10 @@ mod tests {
         site.write_showcase().unwrap();
         let reopened = Site::open(&dir).unwrap();
         assert_eq!(reopened.title, "Test \"Wiki\"");
-        assert_eq!(reopened.list_pages(), vec!["main-page".to_string(), "showcase".to_string()]);
+        assert_eq!(reopened.list_pages(), vec!["showcase".to_string()]);
         let infos = reopened.page_infos();
-        assert_eq!(infos[1].title, "Interactive Article Showcase");
-        for f in ["index.html", "index.css", "index.js", "page/index.html", "page/index.css", "page/index.js", "pages/pages.json", "media/sample.svg", "media/sample.gif", "media/sample.wav", "media/sample-states.csv"] {
+        assert_eq!(infos[0].title, "Interactive Article Showcase");
+        for f in ["index.html", "index.css", "index.js", "page/index.html", "page/index.css", "page/index.js", "pages/pages.json", "media/site-logo.webp", "media/sample.svg", "media/sample.gif", "media/sample.wav", "media/sample-states.csv"] {
             assert!(dir.join(f).is_file(), "missing {f}");
         }
         let _ = fs::remove_dir_all(&dir);
@@ -480,12 +526,13 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("wikiforge-feat-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         let site = Site::create(&dir, "Feat").unwrap();
-        // a new site features only the main page; the showcase is added to the featured list
+        // a new site has no articles and nothing featured; the showcase is added to the featured list
+        assert!(site.page_infos().is_empty());
         assert_eq!(site.write_examples().unwrap(), 10);
         assert_eq!(site.write_examples().unwrap(), 0, "existing examples are not overwritten");
         let infos = site.page_infos();
-        assert_eq!(infos.len(), 11);
-        assert_eq!(infos.iter().filter(|p| p.featured).map(|p| p.slug.as_str()).collect::<Vec<_>>(), vec!["main-page"]);
+        assert_eq!(infos.len(), 10);
+        assert_eq!(infos.iter().filter(|p| p.featured).count(), 0);
         let ex1 = infos.iter().find(|p| p.slug == "example-1").unwrap();
         assert_eq!(ex1.links, vec!["example-2", "example-3", "example-5"]);
         assert_eq!(ex1.title, "Example 1");
@@ -502,13 +549,13 @@ mod tests {
         assert_eq!(seen.len(), 10);
 
         let after = site.set_featured(&["example-3".to_string(), "example-4".to_string()], true).unwrap();
-        assert_eq!(after.iter().filter(|p| p.featured).count(), 3);
+        assert_eq!(after.iter().filter(|p| p.featured).count(), 2);
         site.write_showcase().unwrap();
         let reopened = Site::open(&dir).unwrap();
         let feats: Vec<String> = reopened.page_infos().into_iter().filter(|p| p.featured).map(|p| p.slug).collect();
-        assert_eq!(feats, vec!["example-3", "example-4", "main-page", "showcase"]);
+        assert_eq!(feats, vec!["example-3", "example-4", "showcase"]);
         let json = fs::read_to_string(dir.join("pages/pages.json")).unwrap();
-        assert!(json.contains("\"featured\": [\"example-3\", \"example-4\", \"main-page\", \"showcase\"]"));
+        assert!(json.contains("\"featured\": [\"example-3\", \"example-4\", \"showcase\"]"));
         // deleting a featured article drops it from the list
         let after = reopened.delete_page("example-3").unwrap();
         assert!(after.iter().all(|p| p.slug != "example-3"));
@@ -525,6 +572,38 @@ mod tests {
         fs::write(dir.join("pages/pages.json"), "{ \"siteTitle\": \"Old\", \"pages\": [] }").unwrap();
         let infos = Site::open(&dir).unwrap().page_infos();
         assert!(infos.iter().all(|p| p.featured));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn logo_default_custom_and_reset() {
+        let dir = std::env::temp_dir().join(format!("wikiforge-logo-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let site = Site::create(&dir, "Logo").unwrap();
+        assert_eq!(site.read_logo().as_deref(), Some("media/site-logo.webp"));
+        assert_eq!(fs::read(dir.join("media/site-logo.webp")).unwrap(), DEFAULT_LOGO);
+
+        let png = dir.join("picked.png");
+        fs::write(&png, b"png-bytes").unwrap();
+        assert_eq!(site.set_logo(&png).unwrap(), "media/site-logo.png");
+        assert_eq!(fs::read(dir.join("media/site-logo.png")).unwrap(), b"png-bytes");
+        assert!(!dir.join("media/site-logo.webp").exists(), "the previous logo file is removed");
+        let json = fs::read_to_string(dir.join("pages/pages.json")).unwrap();
+        assert!(json.contains("\"logo\": \"media/site-logo.png\""), "{json}");
+        // the logo survives a rescan and a reopen
+        site.refresh().unwrap();
+        assert_eq!(Site::open(&dir).unwrap().read_logo().as_deref(), Some("media/site-logo.png"));
+        // choosing the file that is already the logo does not truncate it
+        site.set_logo(&dir.join("media/site-logo.png")).unwrap();
+        assert_eq!(fs::read(dir.join("media/site-logo.png")).unwrap(), b"png-bytes");
+        // only images are accepted
+        let txt = dir.join("notes.txt");
+        fs::write(&txt, b"x").unwrap();
+        assert!(site.set_logo(&txt).is_err());
+
+        site.reset_logo().unwrap();
+        assert_eq!(site.read_logo().as_deref(), Some("media/site-logo.webp"));
+        assert!(!dir.join("media/site-logo.png").exists());
         let _ = fs::remove_dir_all(&dir);
     }
 

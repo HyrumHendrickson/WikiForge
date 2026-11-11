@@ -1605,12 +1605,17 @@ async function boot() {
 
   const pages = (manifest.pages || []).slice().sort((a, b) => a.title.localeCompare(b.title));
   $('site-title').textContent = manifest.siteTitle || 'Wiki';
-
-  let slug = params.get('p');
-  if (!slug) {
-    const main = pages.find((p) => p.slug === 'main-page') || pages[0];
-    slug = main ? main.slug : '';
+  if (manifest.logo) {
+    const src = '../' + manifest.logo;
+    $('site-logo').src = src;
+    $('site-logo').hidden = false;
+    $('site-globe').hidden = true;
+    $('favicon').href = src;
   }
+
+  // The home page (site map) is the only main page: no article means go there.
+  const slug = params.get('p');
+  if (!slug) { location.replace('../index.html'); return; }
 
   // The sidebar lists only the featured articles (older manifests have no list: show everything).
   // Every other article is reachable through search, the home page and the site map.
@@ -1630,8 +1635,6 @@ async function boot() {
   setupSearch(pages);
 
   const content = $('content');
-  if (!slug) { $('firstHeading').textContent = 'No articles'; content.innerHTML = '<p>This wiki has no articles yet.</p>'; return; }
-
   let md;
   try {
     const r = await fetch(CONFIG.pagesDir + encodeURIComponent(slug) + '.md', { cache: 'no-store' });

@@ -126,12 +126,7 @@ impl App {
         if let Some(s) = &self.server {
             s.set_root(site.root.clone());
         }
-        let first = self
-            .pages
-            .iter()
-            .find(|p| p.slug == "main-page")
-            .or_else(|| self.pages.first())
-            .map(|p| p.slug.clone());
+        let first = self.pages.first().map(|p| p.slug.clone());
         self.status = format!("Opened {}", site.root.display());
         self.site = Some(site);
         self.current = None;
@@ -267,6 +262,23 @@ impl App {
         }
     }
 
+    fn set_logo(&mut self) {
+        let Some(site) = self.site.clone() else { return };
+        let Some(path) = rfd::FileDialog::new().set_title("Choose a logo image").add_filter("Images", IMAGE_EXTS).pick_file() else { return };
+        self.status = match site.set_logo(&path) {
+            Ok(rel) => format!("Logo set ({rel})."),
+            Err(e) => format!("Could not set the logo: {e}"),
+        };
+    }
+
+    fn reset_logo(&mut self) {
+        let Some(site) = self.site.clone() else { return };
+        self.status = match site.reset_logo() {
+            Ok(_) => "Logo reset to the WikiForge default.".into(),
+            Err(e) => format!("Could not reset the logo: {e}"),
+        };
+    }
+
     fn preview(&mut self) {
         let (Some(site), Some(slug)) = (self.site.clone(), self.current.clone()) else { return };
         self.save();
@@ -368,6 +380,14 @@ impl App {
                 if ui.add_enabled(self.site.is_some(), egui::Button::new("Featured articles...")).on_hover_text("Choose which articles are listed in the sidebar").clicked() {
                     ui.close();
                     self.show_featured = true;
+                }
+                if ui.add_enabled(self.site.is_some(), egui::Button::new("Set logo...")).on_hover_text("Choose an image to use as this wiki's logo and icon").clicked() {
+                    ui.close();
+                    self.set_logo();
+                }
+                if ui.add_enabled(self.site.is_some(), egui::Button::new("Reset logo to default")).clicked() {
+                    ui.close();
+                    self.reset_logo();
                 }
                 if ui.add_enabled(self.site.is_some(), egui::Button::new("Restore default templates")).on_hover_text("Overwrites index.html/css/js and page/index.html/css/js").clicked() {
                     ui.close();
@@ -1421,17 +1441,17 @@ mod tests {
         frame(&ctx, &mut app);
 
         app.add_examples();
-        assert_eq!(app.pages.len(), 11);
+        assert_eq!(app.pages.len(), 10);
         assert!(dir.join("pages/example-10.md").is_file());
         assert!(app.status.contains("10"), "{}", app.status);
         app.add_examples();
         assert!(app.status.contains("already exist"), "{}", app.status);
 
-        // only the main page is featured to begin with
-        assert_eq!(app.pages.iter().filter(|p| p.featured).count(), 1);
+        // nothing is featured to begin with
+        assert_eq!(app.pages.iter().filter(|p| p.featured).count(), 0);
         app.set_featured(&["example-1".to_string(), "example-2".to_string()], true);
-        assert_eq!(app.pages.iter().filter(|p| p.featured).count(), 3);
-        assert!(std::fs::read_to_string(dir.join("pages/pages.json")).unwrap().contains("\"featured\": [\"example-1\", \"example-2\", \"main-page\"]"));
+        assert_eq!(app.pages.iter().filter(|p| p.featured).count(), 2);
+        assert!(std::fs::read_to_string(dir.join("pages/pages.json")).unwrap().contains("\"featured\": [\"example-1\", \"example-2\"]"));
 
         // the featured window and the filtered sidebar render, with and without a filter
         app.show_featured = true;
@@ -1443,7 +1463,7 @@ mod tests {
         assert!(app.show_featured);
 
         app.set_featured(&["example-1".to_string()], false);
-        assert_eq!(app.pages.iter().filter(|p| p.featured).count(), 2);
+        assert_eq!(app.pages.iter().filter(|p| p.featured).count(), 1);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

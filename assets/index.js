@@ -7,7 +7,7 @@
      - a paged, filterable list of every article (the site can have thousands),
      - an interactive site map: articles are nodes, [[cross references]] are edges,
      - header search.
-   pages.json: { siteTitle, featured: [slug], pages: [{ slug, title, links: [slug] }] }
+   pages.json: { siteTitle, logo, featured: [slug], pages: [{ slug, title, links: [slug] }] }
    ========================================================================== */
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -377,6 +377,12 @@ if (typeof document !== 'undefined') {
     const featured = pages.filter((p) => !featuredSet || featuredSet.has(p.slug));
     document.title = data.siteTitle || 'Wiki';
     $('site-title').textContent = data.siteTitle || 'Wiki';
+    if (data.logo) {
+      $('site-logo').src = data.logo;
+      $('site-logo').hidden = false;
+      $('site-globe').hidden = true;
+      $('favicon').href = data.logo;
+    }
     $('home-title').textContent = 'Welcome to ' + (data.siteTitle || 'the wiki');
 
     const href = (p) => 'page/?p=' + encodeURIComponent(p.slug);

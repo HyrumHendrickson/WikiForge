@@ -66,6 +66,8 @@ a.wl-ext::after { content: "\2197"; font-size: 0.72em; margin-left: 2px; vertica
   border: 1px solid #8a97ab;
   font-family: var(--serif); font-weight: bold; color: #333;
 }
+.wk-logo-img { width: 2rem; height: 2rem; object-fit: contain; }
+.wk-globe[hidden], .wk-logo-img[hidden] { display: none; }
 .wk-search { position: relative; margin-left: auto; width: min(26rem, 55vw); }
 .wk-search input {
   width: 100%; padding: 0.4rem 0.75rem;

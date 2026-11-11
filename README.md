@@ -18,14 +18,13 @@ and an XDG desktop portal for the file dialogs.
 
 ```
 my-wiki/
-  index.html  index.css  index.js      home page (lists articles, search)
-  media/                               images, GIFs, videos, .glb models
+  index.html  index.css  index.js      home page: site map, featured and all articles, search
+  media/                               images, GIFs, videos, .glb models, site-logo.*
   page/
     index.html  index.css  index.js    article viewer: page/?p=<slug>
   pages/
-    main-page.md                       one Markdown file per article
-    showcase.md
-    pages.json                         article list, rewritten by the editor on save
+    showcase.md                        one Markdown file per article
+    pages.json                         article list, logo, featured list; rewritten on save
 ```
 
 `page/index.js` fetches `../pages/<slug>.md`, renders it, and activates the widgets.
@@ -39,6 +38,7 @@ and a `pages/` directory.
 ## Editor
 
 * **File**: new site, open site, save (Ctrl+S). Auto-save runs 3 seconds after you stop typing.
+* **Site > Set logo...** uses any image as the wiki's logo and browser tab icon; **Reset logo to default** restores the WikiForge logo.
 * **Page > Generate showcase page**: writes `pages/showcase.md` with one example of every embed type.
 * Each article is a vertical list of blocks. Drag the "Drag" handle (or use Up/Down) to reorder.
 * Text blocks: click to type; choose font, size, color and alignment; wrap the selection in
