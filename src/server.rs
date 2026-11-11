@@ -152,7 +152,12 @@ fn handle(mut stream: TcpStream, root: &SharedRoot) -> std::io::Result<()> {
             return respond(
                 &mut stream,
                 "206 Partial Content",
-                &[("Content-Type", ct), ("Content-Range", format!("bytes {start}-{end}/{len}")), ("Content-Length", data.len().to_string()), ("Accept-Ranges", "bytes".into())],
+                &[
+                    ("Content-Type", ct),
+                    ("Content-Range", format!("bytes {start}-{end}/{len}")),
+                    ("Content-Length", data.len().to_string()),
+                    ("Accept-Ranges", "bytes".into()),
+                ],
                 if method == "HEAD" { b"" } else { &data },
             );
         }

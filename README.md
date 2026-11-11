@@ -1,5 +1,8 @@
 # WikiForge
 
+[![CI](https://github.com/HyrumHendrickson/WikiForge/actions/workflows/ci.yml/badge.svg)](https://github.com/HyrumHendrickson/WikiForge/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A desktop editor (Rust, egui) for building interactive, Wikipedia-style websites.
 Sites are plain files, so you can open the folder, `git init`, and push it to GitHub
 (GitHub Pages serves it as-is).
@@ -100,3 +103,13 @@ cargo test
 
 Covers Markdown round-tripping of every block type, the site layout, and a headless render
 of the editor UI.
+
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md) for development guidance, and
+[SECURITY.md](SECURITY.md) for the security model and how to report a vulnerability privately.
+Changes are tracked in [CHANGELOG.md](CHANGELOG.md).
+
+## License
+
+MIT. See [LICENSE](LICENSE).

@@ -64,13 +64,7 @@ pub struct Block {
 
 impl Block {
     pub fn new(kind: Kind) -> Self {
-        let mut b = Block {
-            id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
-            kind,
-            text: String::new(),
-            attrs: BTreeMap::new(),
-            grid: Vec::new(),
-        };
+        let mut b = Block { id: NEXT_ID.fetch_add(1, Ordering::Relaxed), kind, text: String::new(), attrs: BTreeMap::new(), grid: Vec::new() };
         match kind {
             Kind::Heading => {
                 b.attrs.insert("level".into(), "2".into());
@@ -269,13 +263,7 @@ pub fn to_csv(rows: &[Vec<String>]) -> String {
     rows.iter()
         .map(|r| {
             r.iter()
-                .map(|c| {
-                    if c.contains(',') || c.contains('\n') || c.starts_with('"') {
-                        format!("\"{}\"", c.replace('"', "\"\""))
-                    } else {
-                        c.clone()
-                    }
-                })
+                .map(|c| if c.contains(',') || c.contains('\n') || c.starts_with('"') { format!("\"{}\"", c.replace('"', "\"\"")) } else { c.clone() })
                 .collect::<Vec<_>>()
                 .join(",")
         })
@@ -325,10 +313,7 @@ fn split_table_row(line: &str) -> Vec<String> {
 
 fn is_table_sep(line: &str) -> bool {
     let t = line.trim();
-    !t.is_empty()
-        && t.contains('|')
-        && t.chars().all(|c| matches!(c, '|' | '-' | ':' | ' '))
-        && t.contains('-')
+    !t.is_empty() && t.contains('|') && t.chars().all(|c| matches!(c, '|' | '-' | ':' | ' ')) && t.contains('-')
 }
 
 // ---------------------------------------------------------------- parse
@@ -669,12 +654,7 @@ pub fn extract_title(md: &str) -> Option<String> {
 }
 
 pub fn next_footnote_id(blocks: &[Block]) -> String {
-    let max = blocks
-        .iter()
-        .filter(|b| b.kind == Kind::Footnote)
-        .filter_map(|b| b.attr("id").parse::<u32>().ok())
-        .max()
-        .unwrap_or(0);
+    let max = blocks.iter().filter(|b| b.kind == Kind::Footnote).filter_map(|b| b.attr("id").parse::<u32>().ok()).max().unwrap_or(0);
     (max + 1).to_string()
 }
 

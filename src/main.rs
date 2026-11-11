@@ -13,10 +13,7 @@ fn app_icon() -> Option<egui::IconData> {
 }
 
 fn main() -> eframe::Result {
-    let mut viewport = egui::ViewportBuilder::default()
-        .with_inner_size([1320.0, 860.0])
-        .with_min_inner_size([800.0, 500.0])
-        .with_title("WikiForge");
+    let mut viewport = egui::ViewportBuilder::default().with_inner_size([1320.0, 860.0]).with_min_inner_size([800.0, 500.0]).with_title("WikiForge");
     if let Some(icon) = app_icon() {
         viewport = viewport.with_icon(icon);
     }

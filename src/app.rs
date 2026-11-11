@@ -10,18 +10,10 @@ use crate::model::*;
 use crate::server::PreviewServer;
 use crate::site::*;
 
-const FONT_CHOICES: &[&str] = &[
-    "(default)", "serif", "sans", "mono", "Georgia", "Times New Roman", "Palatino", "Arial", "Verdana", "Trebuchet MS", "Courier New",
-];
-const CODE_LANGS: &[(&str, &str)] = &[
-    ("python", "Python"),
-    ("c", "C"),
-    ("cpp", "C++"),
-    ("rust", "Rust"),
-    ("javascript", "JavaScript"),
-    ("java", "Java"),
-    ("text", "Plain (not runnable)"),
-];
+const FONT_CHOICES: &[&str] =
+    &["(default)", "serif", "sans", "mono", "Georgia", "Times New Roman", "Palatino", "Arial", "Verdana", "Trebuchet MS", "Courier New"];
+const CODE_LANGS: &[(&str, &str)] =
+    &[("python", "Python"), ("c", "C"), ("cpp", "C++"), ("rust", "Rust"), ("javascript", "JavaScript"), ("java", "Java"), ("text", "Plain (not runnable)")];
 const ADD_KINDS: &[Kind] = &[
     Kind::Heading,
     Kind::Text,
@@ -362,7 +354,11 @@ impl App {
                     ui.close();
                     self.generate_showcase();
                 }
-                if ui.add_enabled(has_site, egui::Button::new("Add 10 example articles")).on_hover_text("Example 1 ... Example 10, linked to each other, to try out the site map").clicked() {
+                if ui
+                    .add_enabled(has_site, egui::Button::new("Add 10 example articles"))
+                    .on_hover_text("Example 1 ... Example 10, linked to each other, to try out the site map")
+                    .clicked()
+                {
                     ui.close();
                     self.add_examples();
                 }
@@ -377,11 +373,19 @@ impl App {
                 }
             });
             ui.menu_button("Site", |ui| {
-                if ui.add_enabled(self.site.is_some(), egui::Button::new("Featured articles...")).on_hover_text("Choose which articles are listed in the sidebar").clicked() {
+                if ui
+                    .add_enabled(self.site.is_some(), egui::Button::new("Featured articles..."))
+                    .on_hover_text("Choose which articles are listed in the sidebar")
+                    .clicked()
+                {
                     ui.close();
                     self.show_featured = true;
                 }
-                if ui.add_enabled(self.site.is_some(), egui::Button::new("Set logo...")).on_hover_text("Choose an image to use as this wiki's logo and icon").clicked() {
+                if ui
+                    .add_enabled(self.site.is_some(), egui::Button::new("Set logo..."))
+                    .on_hover_text("Choose an image to use as this wiki's logo and icon")
+                    .clicked()
+                {
                     ui.close();
                     self.set_logo();
                 }
@@ -389,7 +393,11 @@ impl App {
                     ui.close();
                     self.reset_logo();
                 }
-                if ui.add_enabled(self.site.is_some(), egui::Button::new("Restore default templates")).on_hover_text("Overwrites index.html/css/js and page/index.html/css/js").clicked() {
+                if ui
+                    .add_enabled(self.site.is_some(), egui::Button::new("Restore default templates"))
+                    .on_hover_text("Overwrites index.html/css/js and page/index.html/css/js")
+                    .clicked()
+                {
                     ui.close();
                     if let Some(site) = &self.site {
                         self.status = match site.write_templates() {
@@ -426,22 +434,26 @@ impl App {
         ui.label(RichText::new(format!("{} articles, {} featured (*)", self.pages.len(), featured_count)).small().weak());
         ui.add(egui::TextEdit::singleline(&mut self.page_filter).hint_text("Filter pages").desired_width(f32::INFINITY));
         let q = self.page_filter.trim().to_lowercase();
-        let visible: Vec<usize> = (0..self.pages.len())
-            .filter(|&i| q.is_empty() || self.pages[i].title.to_lowercase().contains(&q) || self.pages[i].slug.contains(&q))
-            .collect();
+        let visible: Vec<usize> =
+            (0..self.pages.len()).filter(|&i| q.is_empty() || self.pages[i].title.to_lowercase().contains(&q) || self.pages[i].slug.contains(&q)).collect();
         let mut to_select: Option<String> = None;
         let row_h = ui.text_style_height(&egui::TextStyle::Body) + ui.spacing().item_spacing.y;
         // show_rows only lays out the visible rows, so thousands of articles stay fast
-        egui::ScrollArea::vertical().id_salt("page-list").max_height((ui.available_height() - 130.0).max(80.0)).show_rows(ui, row_h, visible.len(), |ui, range| {
-            for row in range {
-                let p = &self.pages[visible[row]];
-                let selected = self.current.as_deref() == Some(p.slug.as_str());
-                let text = if p.featured { format!("* {}", p.title) } else { p.title.clone() };
-                if ui.selectable_label(selected, text).on_hover_text(format!("pages/{}.md", p.slug)).clicked() {
-                    to_select = Some(p.slug.clone());
+        egui::ScrollArea::vertical().id_salt("page-list").max_height((ui.available_height() - 130.0).max(80.0)).show_rows(
+            ui,
+            row_h,
+            visible.len(),
+            |ui, range| {
+                for row in range {
+                    let p = &self.pages[visible[row]];
+                    let selected = self.current.as_deref() == Some(p.slug.as_str());
+                    let text = if p.featured { format!("* {}", p.title) } else { p.title.clone() };
+                    if ui.selectable_label(selected, text).on_hover_text(format!("pages/{}.md", p.slug)).clicked() {
+                        to_select = Some(p.slug.clone());
+                    }
                 }
-            }
-        });
+            },
+        );
         if let Some(s) = to_select {
             self.select_page(&s);
         }
@@ -492,8 +504,12 @@ impl App {
                 ui.label(RichText::new("unsaved changes").color(Color32::from_rgb(190, 110, 0)));
             }
             let mut featured = self.pages.iter().find(|p| p.slug == slug).map(|p| p.featured).unwrap_or(false);
-            if ui.checkbox(&mut featured, "Featured").on_hover_text("Featured articles are listed in the sidebar. Others are found through search and the site map.").changed() {
-                self.set_featured(&[slug.clone()], featured);
+            if ui
+                .checkbox(&mut featured, "Featured")
+                .on_hover_text("Featured articles are listed in the sidebar. Others are found through search and the site map.")
+                .changed()
+            {
+                self.set_featured(std::slice::from_ref(&slug), featured);
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button("Preview in browser").clicked() {
@@ -695,7 +711,6 @@ impl App {
                 self.last_change = Instant::now();
             }
         }
-    
     }
 }
 
@@ -759,7 +774,13 @@ fn draw_block(ui: &mut egui::Ui, b: &mut Block, idx: usize, count: usize, site: 
             height_row(ui, b, 400);
         }
         Kind::Map => {
-            ui.label(RichText::new("Lines: center: lat, lon | zoom: n | marker: lat, lon | label | circle: lat, lon, radius_m | label | line: lat,lon; lat,lon | label").small().weak());
+            ui.label(
+                RichText::new(
+                    "Lines: center: lat, lon | zoom: n | marker: lat, lon | label | circle: lat, lon, radius_m | label | line: lat,lon; lat,lon | label",
+                )
+                .small()
+                .weak(),
+            );
             multiline(ui, &mut b.text, b.id, 5, true);
             interactive_row(ui, b, "Interactive (drag, zoom, popups). Untick for a fixed picture with the labels shown.");
             height_row(ui, b, 360);
@@ -931,7 +952,16 @@ fn text_ui(ui: &mut egui::Ui, b: &mut Block, idx: usize, action: &mut Option<Act
             }
         });
         let mut size: f32 = b.attr("size").parse().unwrap_or(0.0);
-        if ui.add(egui::DragValue::new(&mut size).range(0.0..=72.0).speed(0.4).custom_formatter(|v, _| if v < 1.0 { "default size".into() } else { format!("{v:.0} px") })).changed() {
+        if ui
+            .add(egui::DragValue::new(&mut size).range(0.0..=72.0).speed(0.4).custom_formatter(|v, _| {
+                if v < 1.0 {
+                    "default size".into()
+                } else {
+                    format!("{v:.0} px")
+                }
+            }))
+            .changed()
+        {
             b.set_attr("size", if size < 1.0 { String::new() } else { format!("{size:.0}") });
         }
         let mut color = parse_hex(b.attr("color")).unwrap_or(ui.visuals().text_color());
@@ -963,12 +993,7 @@ fn text_ui(ui: &mut egui::Ui, b: &mut Block, idx: usize, action: &mut Option<Act
         _ => egui::Align2::LEFT_TOP,
     };
     let id = text_id(b.id);
-    let mut te = egui::TextEdit::multiline(&mut b.text)
-        .id(id)
-        .desired_width(f32::INFINITY)
-        .desired_rows(3)
-        .font(font)
-        .align(align);
+    let mut te = egui::TextEdit::multiline(&mut b.text).id(id).desired_width(f32::INFINITY).desired_rows(3).font(font).align(align);
     if let Some(c) = color {
         te = te.text_color(c);
     }
@@ -1041,7 +1066,10 @@ fn figure_ui(ui: &mut egui::Ui, b: &mut Block, site: &Site, status: &mut String)
         });
         ui.label("Width");
         let mut w: u32 = b.attr("width").parse().unwrap_or(0);
-        if ui.add(egui::DragValue::new(&mut w).range(0..=1600).speed(2.0).custom_formatter(|v, _| if v < 1.0 { "auto".into() } else { format!("{v:.0} px") })).changed() {
+        if ui
+            .add(egui::DragValue::new(&mut w).range(0..=1600).speed(2.0).custom_formatter(|v, _| if v < 1.0 { "auto".into() } else { format!("{v:.0} px") }))
+            .changed()
+        {
             b.set_attr("width", if w == 0 { String::new() } else { w.to_string() });
         }
     });
@@ -1135,7 +1163,11 @@ fn load_csv_preview(site: &Site, src: &str) -> CsvPreview {
 
 fn csv_ui(ui: &mut egui::Ui, b: &mut Block, site: &Site, status: &mut String) {
     ui.label(RichText::new("Upload a CSV file (the first row is the header). Readers get a search box for every column, plus one for all columns, and can sort by clicking a header.").small().weak());
-    ui.label(RichText::new("In a column box: text matches anywhere in the cell, !text excludes it, >100  <=5  =7 compare numbers, 10..20 is a range of numbers.").small().weak());
+    ui.label(
+        RichText::new("In a column box: text matches anywhere in the cell, !text excludes it, >100  <=5  =7 compare numbers, 10..20 is a range of numbers.")
+            .small()
+            .weak(),
+    );
     media_row(ui, "CSV file", b, "src", site, CSV_EXTS, status);
     let src = b.attr("src").to_string();
     let pid = egui::Id::unique(("csv-preview", b.id));
@@ -1157,7 +1189,11 @@ fn csv_ui(ui: &mut egui::Ui, b: &mut Block, site: &Site, status: &mut String) {
             ui.colored_label(Color32::from_rgb(190, 60, 60), e);
         } else {
             ui.horizontal(|ui| {
-                ui.label(RichText::new(format!("{} data rows, {} columns. First rows:", preview.total, preview.rows.first().map(|r| r.len()).unwrap_or(0))).small().weak());
+                ui.label(
+                    RichText::new(format!("{} data rows, {} columns. First rows:", preview.total, preview.rows.first().map(|r| r.len()).unwrap_or(0)))
+                        .small()
+                        .weak(),
+                );
                 if ui.small_button("Reload").clicked() {
                     ui.ctx().data_mut(|d| d.remove::<CsvPreview>(pid));
                 }
@@ -1185,7 +1221,13 @@ fn csv_ui(ui: &mut egui::Ui, b: &mut Block, site: &Site, status: &mut String) {
 }
 
 fn sheet_ui(ui: &mut egui::Ui, b: &mut Block) {
-    ui.label(RichText::new("Interactive spreadsheet. Cells starting with = are formulas; separate function arguments with ; (for example =IF(A1>2;\"big\";\"small\")).").small().weak());
+    ui.label(
+        RichText::new(
+            "Interactive spreadsheet. Cells starting with = are formulas; separate function arguments with ; (for example =IF(A1>2;\"big\";\"small\")).",
+        )
+        .small()
+        .weak(),
+    );
     grid_editor(ui, b.id, &mut b.grid, true);
     ui.horizontal(|ui| {
         if ui.button("Import CSV...").clicked() {
@@ -1227,12 +1269,12 @@ fn grid_editor(ui: &mut egui::Ui, id: u64, grid: &mut Vec<Vec<String>>, spreadsh
                 }
                 ui.end_row();
             }
-            for r in 0..rows {
+            for (r, row) in grid.iter_mut().enumerate().take(rows) {
                 if spreadsheet {
                     ui.label(RichText::new((r + 1).to_string()).weak());
                 }
-                for c in 0..cols {
-                    let mut te = egui::TextEdit::singleline(&mut grid[r][c]).desired_width(96.0);
+                for cell in row.iter_mut().take(cols) {
+                    let mut te = egui::TextEdit::singleline(cell).desired_width(96.0);
                     if !spreadsheet && r == 0 {
                         te = te.text_color(ui.visuals().strong_text_color());
                     }
@@ -1294,7 +1336,11 @@ fn code_ui(ui: &mut egui::Ui, b: &mut Block) {
             }
         });
         let mut canvas = b.attr("canvas") == "1";
-        if ui.add_enabled(runnable, egui::Checkbox::new(&mut canvas, "Include canvas")).on_hover_text("Adds a drawing canvas with a turtle, rect, ellipse, line and text commands").changed() {
+        if ui
+            .add_enabled(runnable, egui::Checkbox::new(&mut canvas, "Include canvas"))
+            .on_hover_text("Adds a drawing canvas with a turtle, rect, ellipse, line and text commands")
+            .changed()
+        {
             b.set_attr("canvas", if canvas { "1" } else { "" });
         }
         if ui.small_button("Insert starter code").on_hover_text("Replaces the code with a starter for this language").clicked() {
@@ -1303,7 +1349,9 @@ fn code_ui(ui: &mut egui::Ui, b: &mut Block) {
     });
     if b.attr("canvas") == "1" && runnable {
         let hint = match lang.as_str() {
-            "python" | "javascript" => "Canvas: rect, ellipse, circle, line, text, clear, forward, back, left, right, penup, pendown, goto, color, pensize, dot",
+            "python" | "javascript" => {
+                "Canvas: rect, ellipse, circle, line, text, clear, forward, back, left, right, penup, pendown, goto, color, pensize, dot"
+            }
             _ => "Canvas: print command lines to stdout, e.g. @rect 10 10 80 40 #36c  or  @forward 100  (see the showcase page)",
         };
         ui.label(RichText::new(hint).small().weak());
@@ -1338,7 +1386,6 @@ fn setup_fonts(ctx: &egui::Context) {
     ctx.set_fonts(fonts);
 }
 
-
 #[cfg(test)]
 impl App {
     fn headless() -> Self {
@@ -1367,10 +1414,7 @@ mod tests {
     use super::*;
 
     fn frame(ctx: &egui::Context, app: &mut App) {
-        let input = egui::RawInput {
-            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1300.0, 900.0))),
-            ..Default::default()
-        };
+        let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1300.0, 900.0))), ..Default::default() };
         let mut out = ctx.run_ui(input, |ui| app.update_ui(ui));
         out.textures_delta.clear();
     }

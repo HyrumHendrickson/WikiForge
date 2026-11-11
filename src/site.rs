@@ -41,18 +41,7 @@ pub const CSV_EXTS: &[&str] = &["csv"];
 
 /// Cross references used by the example articles: `Example n` links to each listed number.
 /// Chosen so that the site map shows a connected graph with a few cycles and chords.
-const EXAMPLE_LINKS: [&[usize]; 10] = [
-    &[2, 3, 5],
-    &[3, 4],
-    &[4, 6],
-    &[5, 7],
-    &[6, 8],
-    &[7, 9],
-    &[8, 10],
-    &[9, 1],
-    &[10, 2],
-    &[1, 4],
-];
+const EXAMPLE_LINKS: [&[usize]; 10] = [&[2, 3, 5], &[3, 4], &[4, 6], &[5, 7], &[6, 8], &[7, 9], &[8, 10], &[9, 1], &[10, 2], &[1, 4]];
 
 #[derive(Clone)]
 pub struct Site {
@@ -71,22 +60,18 @@ pub struct PageInfo {
 }
 
 pub fn ext_of(path: &str) -> String {
-    Path::new(path.split('?').next().unwrap_or(path))
-        .extension()
-        .map(|e| e.to_string_lossy().to_lowercase())
-        .unwrap_or_default()
+    Path::new(path.split('?').next().unwrap_or(path)).extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default()
 }
 
 /// Mirrors `slugify` in page/index.js so that `[[Page Name]]` links resolve to the right file.
 pub fn slugify(name: &str) -> String {
-    let kept: String = name
-        .trim()
-        .to_lowercase()
-        .chars()
-        .filter(|c| c.is_alphanumeric() || c.is_whitespace() || *c == '_' || *c == '-')
-        .collect();
+    let kept: String = name.trim().to_lowercase().chars().filter(|c| c.is_alphanumeric() || c.is_whitespace() || *c == '_' || *c == '-').collect();
     let s = kept.split_whitespace().collect::<Vec<_>>().join("-");
-    if s.is_empty() { "section".to_string() } else { s }
+    if s.is_empty() {
+        "section".to_string()
+    } else {
+        s
+    }
 }
 
 fn json_escape(s: &str) -> String {
@@ -215,18 +200,13 @@ impl Site {
 
     pub fn open(root: &Path) -> Result<Site, String> {
         if !Self::is_valid(root) {
-            return Err(format!(
-                "{} is not a WikiForge site. It needs index.html, page/index.html and a pages/ folder.",
-                root.display()
-            ));
+            return Err(format!("{} is not a WikiForge site. It needs index.html, page/index.html and a pages/ folder.", root.display()));
         }
         let _ = fs::create_dir_all(root.join("media"));
         let title = fs::read_to_string(root.join("pages").join("pages.json"))
             .ok()
             .and_then(|t| json_unescape_first(&t, "siteTitle"))
-            .unwrap_or_else(|| {
-                root.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Wiki".into())
-            });
+            .unwrap_or_else(|| root.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Wiki".into()));
         let site = Site { root: root.to_path_buf(), title };
         let _ = site.write_manifest();
         Ok(site)
@@ -370,14 +350,7 @@ impl Site {
         let featured: Vec<String> = infos.iter().filter(|p| p.featured).map(|p| p.slug.clone()).collect();
         let pages: Vec<String> = infos
             .iter()
-            .map(|p| {
-                format!(
-                    "    {{ \"slug\": \"{}\", \"title\": \"{}\", \"links\": {} }}",
-                    json_escape(&p.slug),
-                    json_escape(&p.title),
-                    json_array(&p.links)
-                )
-            })
+            .map(|p| format!("    {{ \"slug\": \"{}\", \"title\": \"{}\", \"links\": {} }}", json_escape(&p.slug), json_escape(&p.title), json_array(&p.links)))
             .collect();
         // `siteTitle`, `logo` and `featured` come before `pages` so that readers looking for the
         // first occurrence of a key can never match an article title.
@@ -430,10 +403,7 @@ impl Site {
         }
         let stem = src.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "file".into());
         let ext = src.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
-        let stem: String = stem
-            .chars()
-            .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
-            .collect();
+        let stem: String = stem.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' }).collect();
         let mut name = format!("{stem}{ext}");
         let mut n = 2;
         while media.join(&name).exists() {
@@ -501,7 +471,20 @@ mod tests {
         assert_eq!(reopened.list_pages(), vec!["showcase".to_string()]);
         let infos = reopened.page_infos();
         assert_eq!(infos[0].title, "Interactive Article Showcase");
-        for f in ["index.html", "index.css", "index.js", "page/index.html", "page/index.css", "page/index.js", "pages/pages.json", "media/site-logo.webp", "media/sample.svg", "media/sample.gif", "media/sample.wav", "media/sample-states.csv"] {
+        for f in [
+            "index.html",
+            "index.css",
+            "index.js",
+            "page/index.html",
+            "page/index.css",
+            "page/index.js",
+            "pages/pages.json",
+            "media/site-logo.webp",
+            "media/sample.svg",
+            "media/sample.gif",
+            "media/sample.wav",
+            "media/sample-states.csv",
+        ] {
             assert!(dir.join(f).is_file(), "missing {f}");
         }
         let _ = fs::remove_dir_all(&dir);
